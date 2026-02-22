@@ -53,9 +53,6 @@ namespace LethalBots.Configs
         [SyncedEntryField] public SyncedEntry<bool> GrabWheelbarrow;
         [SyncedEntryField] public SyncedEntry<bool> GrabShoppingCart;
 
-        // Teleporters
-        [SyncedEntryField] public SyncedEntry<bool> TeleportedBotDropItems;
-
         // Voice Recognition
         public ConfigEntry<bool> AllowVoiceRecognition;
         public ConfigEntry<float> VoiceRecognitionSimilarityThreshold;
@@ -201,12 +198,6 @@ namespace LethalBots.Configs
                                       "Grab the shopping cart",
                                       defaultVal: false,
                                       "Should the bot try to grab the shopping cart (mod)?");
-
-            // Teleporters
-            TeleportedBotDropItems = cfg.BindSyncedEntry(ConfigConst.ConfigSectionTeleporters,
-                                                            "Inverse Teleported bots drop items when teleporting",
-                                                            defaultVal: true,
-                                                            "Should the bot drop their items when inverse teleporting?");
 
             // Voice Recognition
             AllowVoiceRecognition = cfg.Bind(ConfigConst.ConfigSectionVoiceRecognition,

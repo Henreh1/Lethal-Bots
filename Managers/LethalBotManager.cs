@@ -553,10 +553,20 @@ namespace LethalBots.Managers
             IdentityManager.Instance.InitIdentities(Plugin.Config.ConfigIdentities.configIdentities);
 
             // DEBUG: List all available items and their ids
-            Plugin.LogDebug("Listing all items in the game!");
+            Plugin.LogInfo("Listing all items in the game!");
             foreach (Item item in StartOfRound.Instance.allItemsList.itemsList)
             {
-                Plugin.LogDebug($"Name: {item.itemName} with ID: {item.itemId}");
+                Plugin.LogInfo($"Name: {item.itemName} with ID: {item.itemId}");
+            }
+
+            // DEBUG: List all available unlockables and their ids
+            Plugin.LogInfo("Listing all unlockable items in the game!");
+            List<UnlockableItem> unlockableItems = StartOfRound.Instance.unlockablesList.unlockables;
+            for (int i = 0; i < unlockableItems.Count; i++)
+            {
+                UnlockableItem item = unlockableItems[i];
+                if (item != null)
+                    Plugin.LogInfo($"Name: {item.unlockableName} with ID: {i}");
             }
 
             // Bot objects
@@ -2554,7 +2564,8 @@ namespace LethalBots.Managers
             Vector3 teleportPos = default(Vector3);
             Vector3 nodePos;
             AudioReverbPresets audioReverbPresets = Object.FindObjectOfType<AudioReverbPresets>();
-            foreach (LethalBotAI lethalBotAI in AllLethalBotAIs)
+            LethalBotAI[] lethalBotAIs = GetLethalBotsAIOwnedByLocal();
+            foreach (LethalBotAI lethalBotAI in lethalBotAIs)
             {
                 if (lethalBotAI == null
                     || !lethalBotAI.IsSpawned
@@ -2611,27 +2622,13 @@ namespace LethalBots.Managers
                 // Teleport bot
                 PlayerControllerB playerControllerB = lethalBotAI.NpcController.Npc;
                 ShipTeleporterPatch.SetPlayerTeleporterId_ReversePatch(teleporter, playerControllerB, 2);
-                ShipTeleporterPatch.SpikeTrapsReactToInverseTeleport_ReversePatch(teleporter);
-                ShipTeleporterPatch.SetCaveReverb_ReversePatch(teleporter, playerControllerB);
-                if (Plugin.Config.TeleportedBotDropItems)
-                { 
-                    playerControllerB.DropAllHeldItems(); 
-                }
-                if ((bool)audioReverbPresets)
+                if (playerControllerB.deadBody != null)
                 {
-                    audioReverbPresets.audioPresets[2].ChangeAudioReverbForPlayer(playerControllerB);
+                    teleporter.TeleportPlayerBodyOutServerRpc((int)playerControllerB.playerClientId, teleportPos);
+                    continue;
                 }
-                playerControllerB.isInElevator = false;
-                playerControllerB.isInHangarShipRoom = false;
-                lethalBotAI.isInsidePlayerShip = false;
-                playerControllerB.isInsideFactory = true;
-                playerControllerB.averageVelocity = 0f;
-                playerControllerB.velocityLastFrame = Vector3.zero;
-                lethalBotAI.InitStateToSearchingNoTarget(true);
-                lethalBotAI.TeleportLethalBot(teleportPos, setOutside: false, targetEntrance: null);
-                lethalBotAI.NpcController.Npc.beamOutParticle.Play();
-                teleporter.shipTeleporterAudio.PlayOneShot(teleporter.teleporterBeamUpSFX);
-                ShipTeleporterPatch.SetPlayerTeleporterId_ReversePatch(teleporter, playerControllerB, -1);
+                ShipTeleporterPatch.TeleportPlayerOutWithInverseTeleporter_ReversePatch(teleporter, (int)playerControllerB.playerClientId, teleportPos);
+                teleporter.TeleportPlayerOutServerRpc((int)playerControllerB.playerClientId, teleportPos);
             }
             IsInverseTeleporterActive = false;
         }
@@ -3994,6 +3991,7 @@ namespace LethalBots.Managers
         /// <param name="timeOfDay">The new time of day</param>
         public void SetLastReportedTimeOfDayAndSync(DayMode timeOfDay)
         {
+            SetLastReportedTimeOfDay(timeOfDay);
             if (base.IsServer)
             {
                 SetLastReportedTimeOfDayClientRpc(timeOfDay);
@@ -4020,6 +4018,7 @@ namespace LethalBots.Managers
         /// Sets the <see cref="lastReportedTimeOfDay"/> for this client
         /// </summary>
         /// <param name="timeOfDay"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SetLastReportedTimeOfDay(DayMode timeOfDay)
         {
             lastReportedTimeOfDay = timeOfDay;

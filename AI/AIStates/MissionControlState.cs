@@ -32,6 +32,7 @@ namespace LethalBots.AI.AIStates
     {
         private bool overrideCrouch;
         private bool skipTerminalThink; // Used so the bot can accept calls on the switchboard
+        private bool grabbedLoadout; // Used to make the bot grab its loadout before heading on the terminal
         private bool botClosedShipDoors; // Used so the bot doesn't mess with the doors when the player touches them
         private bool playerRequestLeave; // This is used when a human player requests the bot to pull the ship lever!
         private bool playerRequestedTerminal; // This is used when a human player requests to use the terminal!
@@ -120,6 +121,7 @@ namespace LethalBots.AI.AIStates
                 SetupTerminalAccessibleObjects();
                 FindWalkieTalkie();
                 FindWeapon();
+                grabbedLoadout = false;
             }
             base.OnEnterState();
         }
@@ -159,6 +161,14 @@ namespace LethalBots.AI.AIStates
             if (!npcController.Npc.isInElevator && !npcController.Npc.isInHangarShipRoom)
             {
                 ai.State = new ReturnToShipState(this);
+                return;
+            }
+
+            // Make sure to grab our loadout before we get on the terminal
+            if (!grabbedLoadout)
+            {
+                grabbedLoadout = true;
+                ai.State = new GrabLoadoutState(this);
                 return;
             }
 
@@ -330,14 +340,18 @@ namespace LethalBots.AI.AIStates
                     // If we don't have our weapon, we should pick it up!
                     if (!ai.HasGrabbableObjectInInventory(weapon, out _))
                     {
-                        if (!weapon.isInShipRoom || weapon.isHeld)
+                        int openSlot = ai.FirstEmptyItemSlot(weapon);
+                        if (openSlot != Const.INVALID_ITEM_SLOT)
                         {
-                            FindWeapon();
+                            if (!weapon.isInShipRoom || weapon.isHeld)
+                            {
+                                FindWeapon();
+                                return;
+                            }
+                            LethalBotAI.DictJustDroppedItems.Remove(weapon);
+                            ai.State = new FetchingObjectState(this, weapon);
                             return;
                         }
-                        LethalBotAI.DictJustDroppedItems.Remove(weapon);
-                        ai.State = new FetchingObjectState(this, weapon);
-                        return;
                     }
                     // If our weapon uses batteries and its low on battery, we should charge it!
                     else if (!LethalBotAI.IsItemPowered(weapon))
@@ -397,15 +411,19 @@ namespace LethalBots.AI.AIStates
             {
                 // We don't have the walkie-talkie, so we should pick it up!
                 if (!ai.HasGrabbableObjectInInventory(walkieTalkie, out int walkieSlot))
-                { 
-                    if (!walkieTalkie.isInShipRoom || walkieTalkie.isHeld)
+                {
+                    int openSlot = ai.FirstEmptyItemSlot(walkieTalkie);
+                    if (openSlot != Const.INVALID_ITEM_SLOT)
                     {
-                        FindWalkieTalkie();
+                        if (!walkieTalkie.isInShipRoom || walkieTalkie.isHeld)
+                        {
+                            FindWalkieTalkie();
+                            return;
+                        }
+                        LethalBotAI.DictJustDroppedItems.Remove(walkieTalkie); // HACKHACK: Since the walkie-talkie is on the ship, we clear the just dropped item timer!
+                        ai.State = new FetchingObjectState(this, walkieTalkie);
                         return;
                     }
-                    LethalBotAI.DictJustDroppedItems.Remove(walkieTalkie); // HACKHACK: Since the walkie-talkie is on the ship, we clear the just dropped item timer!
-                    ai.State = new FetchingObjectState(this, walkieTalkie);
-                    return;
                 }
                 // If our walkie-talkie is low on battery, we should charge it!
                 else if (walkieTalkie.insertedBattery.empty
@@ -554,8 +572,6 @@ namespace LethalBots.AI.AIStates
                     if (!string.IsNullOrWhiteSpace(messageToSend))
                     {
                         yield return SendCommandToTerminal($"transmit {messageToSend}");
-                        //SignalTranslator.timeLastUsingSignalTranslator = Time.realtimeSinceStartup;
-                        //HUDManager.Instance.UseSignalTranslatorServerRpc(messageToSend.Substring(0, Mathf.Min(messageToSend.Length, 10)));
                     }
                 }
 
@@ -573,7 +589,7 @@ namespace LethalBots.AI.AIStates
                     if (playerControllerB != targetedPlayer)
                     {
                         // Switch to the requested player first
-                        yield return SwitchRadarTargetToPlayer(playerControllerB);
+                        yield return SwitchRadarTarget(playerControllerB);
 
                         // Wait until the teleport target is updated
                         startTime = Time.timeSinceLevelLoad; // Reuse start time variable, just in case we fail to update the target somehow.
@@ -590,7 +606,7 @@ namespace LethalBots.AI.AIStates
                 {
                     if (targetedPlayer != monitoredPlayer)
                     {
-                        yield return SwitchRadarTargetToPlayer(monitoredPlayer);
+                        yield return SwitchRadarTarget(monitoredPlayer);
                     }
                     else
                     {
@@ -606,7 +622,7 @@ namespace LethalBots.AI.AIStates
                     yield return HandlePlayerMonitorLogic(targetedPlayer);
                 }
 
-                yield return SwitchRadarTargetToPlayer();
+                yield return SwitchRadarTarget();
             }
 
             // Clear the monitor crew coroutine!
@@ -618,26 +634,17 @@ namespace LethalBots.AI.AIStates
         /// </summary>
         /// <param name="player"></param>
         /// <returns></returns>
-        private IEnumerator SwitchRadarTargetToPlayer(PlayerControllerB? player = null)
+        private IEnumerator SwitchRadarTarget(PlayerControllerB? player = null)
         {
-            // Ok, so I found out this can break if we have an active signal booster so uh.
-            string playerUsername = player?.playerUsername.ToLower() ?? "";
-            yield return SendCommandToTerminal($"switch {playerUsername}");
-            //StartOfRound.Instance.mapScreen.SwitchRadarTargetAndSync((int)player.playerClientId);
-            //int playerIndex = (int)player.playerClientId; // Fallback to client id.
-            //var radarTargets = StartOfRound.Instance.mapScreen.radarTargets;
-            //for (int i = 0; i < radarTargets.Count; i++)
-            //{
-            //    var radarTarget = radarTargets[i];
-            //    if (radarTarget != null 
-            //        && !radarTarget.isNonPlayer 
-            //        && radarTarget.name.ToLower() == playerUsername)
-            //    {
-            //        playerIndex = i;
-            //        break;
-            //    }
-            //}
-            //StartOfRound.Instance.mapScreen.SwitchRadarTargetAndSync(playerIndex);
+            if (player != null)
+            {
+                string playerUsername = player.playerUsername.ToLower();
+                yield return SendCommandToTerminal($"switch {playerUsername}");
+            }
+            else
+            {
+                yield return SendCommandToTerminal($"switch");
+            }
         }
 
         /// <summary>
@@ -652,16 +659,9 @@ namespace LethalBots.AI.AIStates
         private IEnumerator UseTerminalAccessibleObjects(PlayerControllerB player)
         {
             TerminalAccessibleObject[] objectsToUse = FindTerminalAccessibleObjectsToUse(player);
-            Terminal ourTerminal = TerminalManager.Instance.GetTerminal();
             foreach (TerminalAccessibleObject terminalAccessible in objectsToUse)
             {
                 yield return SendCommandToTerminal(terminalAccessible.objectCode);
-                //if (ourTerminal != null)
-                //{
-                //    ourTerminal.codeBroadcastAnimator.SetTrigger("display");
-                //    ourTerminal.terminalAudio.PlayOneShot(ourTerminal.codeBroadcastSFX, 1f);
-                //}
-                //terminalAccessible.CallFunctionFromTerminal();
                 yield return null;
             }
         }

@@ -3837,6 +3837,21 @@ namespace LethalBots.AI
         }
 
         /// <summary>
+        /// Does the lethalBot have room for another item?
+        /// </summary>
+        /// <remarks>
+        /// This considers <see cref="Plugin.IsModReservedItemSlotCoreLoaded"/>.<br/>
+        /// This checks if the bot has space for the given item in their inventory.<br/>
+        /// Which is slightly different from <see cref="HasSpaceInInventory()"/>
+        /// </remarks>
+        /// <param name="grabbableObject">The object to assess, can be null!</param>
+        /// <returns>I mean come on</returns>
+        public bool HasSpaceInInventory(GrabbableObject? grabbableObject)
+        {
+            return FirstEmptyItemSlot(grabbableObject) != Const.INVALID_ITEM_SLOT;
+        }
+
+        /// <summary>
         /// Does the lethalBot have something in its inventory?
         /// </summary>
         /// <returns>I mean come on</returns>
@@ -6142,7 +6157,7 @@ namespace LethalBots.AI
         /// </summary>
         /// <param name="grabbableObject">The object the bot is grabbing!</param>
         /// <returns>Returns the open slot <c>int</c> or <see cref="Const.INVALID_ITEM_SLOT"/> </returns>
-        private int FirstEmptyItemSlot(GrabbableObject? grabbableObject = null)
+        public int FirstEmptyItemSlot(GrabbableObject? grabbableObject = null)
         {
             int result = Const.INVALID_ITEM_SLOT;
             GrabbableObject[] itemSlots = NpcController.Npc.ItemSlots;

@@ -279,7 +279,7 @@ namespace LethalBots.Managers
             hasGottenVerb = false;
             for (int j = 0; j < array.Length; j++)
             {
-                terminalKeyword = (TerminalKeyword)parseWordMethod.Invoke(ourTerminal, new object[] { array[j] });
+                terminalKeyword = (TerminalKeyword)parseWordMethod.Invoke(ourTerminal, new object[] { array[j], 2 }); // Sigh, I have to provide the default parameter as well.....
                 if (terminalKeyword != null)
                 {
                     Plugin.LogInfo("Parsed word: " + array[j]);
