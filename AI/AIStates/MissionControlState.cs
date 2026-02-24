@@ -35,6 +35,7 @@ namespace LethalBots.AI.AIStates
     {
         private bool overrideCrouch;
         private bool skipTerminalThink; // Used so the bot can accept calls on the switchboard
+        private bool canCollectPurchasedItems; // Used to keep the bot from heading over to collect what is purchased when we are in the middle of ordering stuff.
         private bool grabbedLoadout; // Used to make the bot grab its loadout before heading on the terminal
         private bool botClosedShipDoors; // Used so the bot doesn't mess with the doors when the player touches them
         private bool playerRequestLeave; // This is used when a human player requests the bot to pull the ship lever!
@@ -250,6 +251,13 @@ namespace LethalBots.AI.AIStates
                 bodyToCollect = null;
                 LethalBotAI.DictJustDroppedItems.Remove(body); // HACKHACK: Skip the dropped item cooldown so bot can grab the body immediately
                 ai.State = new FetchingObjectState(this, body);
+                return;
+            }
+
+            // Do we have purchased items to collect?
+            if (canCollectPurchasedItems && CollectPurchasedItemsState.IsPossible(true))
+            {
+                ai.State = new CollectPurchasedItemsState(this);
                 return;
             }
 
@@ -930,15 +938,15 @@ namespace LethalBots.AI.AIStates
         /// <returns></returns>
         private IEnumerator RestockTheShip()
         {
-            ItemDropship? itemDropship = null;
             yield return null;
             while (ai.State != null
                 && ai.State == this
                 && npcController.Npc.inTerminalMenu
                 && LethalBotManager.AreWeAtTheCompanyBuilding())
             {
+                canCollectPurchasedItems = true; // Allow during the cooldown period
                 yield return new WaitForSeconds(1f); // One second cooldown on this!
-                itemDropship ??= Object.FindObjectOfType<ItemDropship>();
+                canCollectPurchasedItems = false; // We are using the terminal, don't do it now!
 
                 // Now lets check what we need to stock!
                 Terminal ourTerminal = TerminalManager.Instance.GetTerminal();
@@ -978,7 +986,7 @@ namespace LethalBots.AI.AIStates
                     }
 
                     // Check how much is already ordered.
-                    int totalOwned = GetPendingOrderCount(item, ourTerminal, itemDropship) + GetNumberOfItemAlreadyOwned(item);
+                    int totalOwned = GetPendingOrderCount(item, ourTerminal, CollectPurchasedItemsState.ItemDropship) + GetNumberOfItemAlreadyOwned(item);
 
                     // Make the purchase as needed.
                     int numToPurchase = requiredStock - totalOwned;
@@ -1326,6 +1334,7 @@ namespace LethalBots.AI.AIStates
 
         private void StopRestockingTheShip()
         {
+            canCollectPurchasedItems = true;
             if (restockShip != null)
             {
                 ai.StopCoroutine(restockShip);

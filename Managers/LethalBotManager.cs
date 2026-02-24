@@ -1771,6 +1771,14 @@ namespace LethalBots.Managers
                 //    HUDManager.Instance.AddTextToChatOnServer($"currentDayTime: {timeOfDay.currentDayTime} \n totalTime {timeOfDay.totalTime}");
                 //    return;
                 //}
+                //else if (message.Contains("itemdropship"))
+                //{
+                //    ItemDropship? itemDropship = CollectPurchasedItemsState.ItemDropship;
+                //    if (itemDropship != null)
+                //    {
+                //        HUDManager.Instance.AddTextToChatOnServer($"Distance to dropship: {Vector3.Distance(itemDropship.transform.parent.gameObject.transform.position, playerWhoSentMessage.transform.position)}");
+                //    }
+                //}
                 else if (message.Contains("light level"))
                 {
                     //Light[] lights = Object.FindObjectsOfType<Light>();
