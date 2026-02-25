@@ -4921,7 +4921,6 @@ namespace LethalBots.AI
             }
 
             // Dead bodies
-            // TODO: Probably should add a desperation mechanic where they only sell if we won't make the quota
             if (!Plugin.Config.GrabDeadBodies.Value
                 && enumGrabbable != EnumGrabbableObjectCall.Selling
                 && enumGrabbable != EnumGrabbableObjectCall.Reviving

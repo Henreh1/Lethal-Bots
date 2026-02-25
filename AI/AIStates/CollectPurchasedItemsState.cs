@@ -11,6 +11,7 @@ namespace LethalBots.AI.AIStates
 {
     public class CollectPurchasedItemsState : AIState
     {
+        private float waitNoItemTimer = 0f;
         private static ItemDropship? _itemDropship;
         internal static ItemDropship? ItemDropship
         {
@@ -79,6 +80,22 @@ namespace LethalBots.AI.AIStates
                 if (!ItemDropship.shipLanded && sqrDistToLandingSpot <= Const.DISTANCE_TO_WAIT_FOR_DROPSHIP * Const.DISTANCE_TO_WAIT_FOR_DROPSHIP)
                 {
                     ai.StopMoving();
+
+                    // Don't get too close until it has landed!
+                    if (!ItemDropship.shipLanded)
+                    {
+                        // We are WAY TOO CLOSE, FALLBACK!
+                        if (sqrDistToLandingSpot < Const.DISTANCE_FALLBACK_FROM_DROPSHIP * Const.DISTANCE_FALLBACK_FROM_DROPSHIP)
+                        {
+                            Ray ray = new Ray(npcController.Npc.transform.position, npcController.Npc.transform.position + Vector3.up * 0.2f - dropshipLandingPos + Vector3.up * 0.2f);
+                            ray.direction = new Vector3(ray.direction.x, 0f, ray.direction.z);
+                            Vector3 pos = (!Physics.Raycast(ray, out RaycastHit hit, Const.DISTANCE_FALLBACK_FROM_DROPSHIP, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore)) ? ray.GetPoint(Const.DISTANCE_FALLBACK_FROM_DROPSHIP) : hit.point;
+
+                            // GO GO GO!
+                            ai.SetDestinationToPositionLethalBotAI(RoundManager.Instance.GetNavMeshPosition(pos, default, 2.7f));
+                            ai.OrderMoveToDestination();
+                        }
+                    }
                 }
                 else
                 {
@@ -118,18 +135,26 @@ namespace LethalBots.AI.AIStates
                     GrabbableObject? objectToCollect = GrabDeliveredObjects();
                     if (objectToCollect == null)
                     {
+                        const float maxWaitTime = 3f;
+                        if (waitNoItemTimer < maxWaitTime)
+                        {
+                            waitNoItemTimer += ai.AIIntervalTime;
+                            return;
+                        }
                         CollectDeliveredItems = false;
                         ai.State = new ReturnToShipState(this);
                         return;
                     }
                     else if (!ai.HasSpaceInInventory(objectToCollect))
                     {
+                        waitNoItemTimer = 0f;
                         CollectDeliveredItems = true;
                         ai.State = new ReturnToShipState(this);
                         return;
                     }
                     else
                     {
+                        waitNoItemTimer = 0f;
                         CollectDeliveredItems = true;
                         ai.State = new FetchingObjectState(this, objectToCollect);
                         return;
@@ -193,8 +218,9 @@ namespace LethalBots.AI.AIStates
             }
 
             Vector3 dropshipLandingPos = ItemDropship.transform.parent.gameObject.transform.position;
+            Vector3 ourPos = npcController.Npc.transform.position;
             GrabbableObject? bestItem = null;
-            float closestItemDistSqr = Const.DISTANCE_ITEM_TO_COLLECT * Const.DISTANCE_ITEM_TO_COLLECT; // Cheap way to limit range!
+            float closestItemDistSqr = float.MaxValue;
             for (int i = 0; i < LethalBotManager.grabbableObjectsInMap.Count; i++)
             {
                 GameObject gameObject = LethalBotManager.grabbableObjectsInMap[i];
@@ -207,7 +233,15 @@ namespace LethalBots.AI.AIStates
                 GrabbableObject? item = gameObject.GetComponent<GrabbableObject>();
                 if (item != null)
                 {
+                    // Only grab stuff near the dropship!
                     float itemDistSqr = (item.transform.position - dropshipLandingPos).sqrMagnitude;
+                    if (itemDistSqr > Const.DISTANCE_ITEM_TO_COLLECT * Const.DISTANCE_ITEM_TO_COLLECT) // Cheap way to limit range!
+                    {
+                        continue;
+                    }
+
+                    // Check distance to us!
+                    itemDistSqr = (item.transform.position - ourPos).sqrMagnitude;
                     if (itemDistSqr < closestItemDistSqr 
                         && ai.IsGrabbableObjectGrabbable(item))
                     {

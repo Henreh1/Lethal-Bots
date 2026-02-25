@@ -247,16 +247,14 @@ namespace LethalBots.Configs
             cfg.SaveOnConfigSet = true;
 
             // Config identities
-            CopyDefaultConfigIdentitiesJson();
-            ReadAndLoadConfigIdentitiesFromUser();
+            ReadAndLoadConfigIdentities();
 
             // Config loadouts
             CopyDefaultConfigLoadoutsJson();
             ReadAndLoadConfigLoadoutsFromUser();
 
             // Config stock requirements
-            CopyDefaultConfigStockRequirementsJson();
-            ReadAndLoadConfigStockRequirementsFromUser();
+            ReadAndLoadConfigStockRequirements();
 
             ConfigManager.Register(this);
         }
@@ -287,7 +285,7 @@ namespace LethalBots.Configs
                 Directory.CreateDirectory(directoryPath);
 
                 string json = ReadJsonResource("LethalBots.Configs.ConfigIdentities.json");
-                using (StreamWriter outputFile = new StreamWriter(Utility.CombinePaths(directoryPath, ConfigConst.FILE_NAME_CONFIG_IDENTITIES_DEFAULT)))
+                using (StreamWriter outputFile = new StreamWriter(Utility.CombinePaths(directoryPath, ConfigConst.FILE_NAME_CONFIG_IDENTITIES)))
                 {
                     outputFile.WriteLine(json);
                 }
@@ -325,7 +323,7 @@ namespace LethalBots.Configs
                 Directory.CreateDirectory(directoryPath);
 
                 string json = ReadJsonResource("LethalBots.Configs.ConfigStockRequirements.json");
-                using (StreamWriter outputFile = new StreamWriter(Utility.CombinePaths(directoryPath, ConfigConst.FILE_NAME_CONFIG_STOCK_REQUIREMENT_DEFAULT)))
+                using (StreamWriter outputFile = new StreamWriter(Utility.CombinePaths(directoryPath, ConfigConst.FILE_NAME_CONFIG_STOCK_REQUIREMENTS)))
                 {
                     outputFile.WriteLine(json);
                 }
@@ -349,14 +347,14 @@ namespace LethalBots.Configs
             }
         }
 
-        private void ReadAndLoadConfigIdentitiesFromUser()
+        private void ReadAndLoadConfigIdentities()
         {
             string json;
             string path = "No path yet";
 
             try
             {
-                path = Utility.CombinePaths(Paths.ConfigPath, MyPluginInfo.PLUGIN_GUID, ConfigConst.FILE_NAME_CONFIG_IDENTITIES_USER);
+                path = Utility.CombinePaths(Paths.ConfigPath, MyPluginInfo.PLUGIN_GUID, ConfigConst.FILE_NAME_CONFIG_IDENTITIES);
                 // Try to read user config file
                 if (File.Exists(path))
                 {
@@ -374,7 +372,8 @@ namespace LethalBots.Configs
                 }
                 else
                 {
-                    Plugin.Logger.LogInfo("No user identities file found. Reading default identities...");
+                    Plugin.Logger.LogInfo("No identities file found. Creating new file with default identities...");
+                    CopyDefaultConfigIdentitiesJson();
                     path = "LethalBots.Configs.ConfigIdentities.json";
                     json = ReadJsonResource(path);
                     ConfigIdentities = JsonUtility.FromJson<ConfigIdentities>(json);
@@ -520,14 +519,14 @@ namespace LethalBots.Configs
             }
         }
 
-        private void ReadAndLoadConfigStockRequirementsFromUser()
+        private void ReadAndLoadConfigStockRequirements()
         {
             string json;
             string path = "No path yet";
 
             try
             {
-                path = Utility.CombinePaths(Paths.ConfigPath, MyPluginInfo.PLUGIN_GUID, ConfigConst.FILE_NAME_CONFIG_STOCK_REQUIREMENT_USER);
+                path = Utility.CombinePaths(Paths.ConfigPath, MyPluginInfo.PLUGIN_GUID, ConfigConst.FILE_NAME_CONFIG_STOCK_REQUIREMENTS);
                 // Try to read user config file
                 if (File.Exists(path))
                 {
@@ -545,7 +544,8 @@ namespace LethalBots.Configs
                 }
                 else
                 {
-                    Plugin.Logger.LogInfo("No user stock requirements file found. Reading default stock requirements...");
+                    Plugin.Logger.LogInfo("No stock requirements file found. Creating new file with default stock requirements...");
+                    CopyDefaultConfigStockRequirementsJson();
                     path = "LethalBots.Configs.ConfigStockRequirements.json";
                     json = ReadJsonResource(path);
                     ConfigStockRequirements = JsonUtility.FromJson<ConfigStockRequirements>(json);
