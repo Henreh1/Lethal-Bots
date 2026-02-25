@@ -893,10 +893,23 @@ namespace LethalBots.Managers
                       (fq.EnemyAI is CentipedeAI c && c.clingingToPlayer != null) ? 15f : 1f
             );
 
+            float? CoilHeadMissionFunc(LethalBotFearQuery fearQuery)
+            {
+                if (fearQuery.EnemyAI.currentBehaviourStateIndex > 0 && fearQuery.PlayerToCheck is PlayerControllerB playerToCheck)
+                {
+                    const float trappedTeleportTimer = 10f;
+                    if (playerToCheck.timeSincePlayerMoving > trappedTeleportTimer)
+                    {
+                        return 10f;
+                    }
+                }
+                return null;
+            }
+
             // Coil Head
             RegisterThreat(typeof(SpringManAI),
                 fq => fq.EnemyAI.currentBehaviourStateIndex > 0 ? 20f : null,
-                fq => fq.EnemyAI.currentBehaviourStateIndex > 0 && fq.PlayerToCheck is PlayerControllerB playerToCheck && playerToCheck.isPlayerAlone ? 10f : null,
+                CoilHeadMissionFunc,
                 fq => fq.EnemyAI.currentBehaviourStateIndex > 0 ? 20f : null
             );
 
