@@ -39,6 +39,7 @@ namespace LethalBots.AI
         public TimedUpdateBillboardLookAtCheck UpdateBillBoardLookAtTimedCheck = null!;
 
         // Public variables to pass to patch
+        // NEEDTOVALIDATE: Would it be better if I used accesstools and used FieldRef instead?
         public bool IsCameraDisabled;
         public bool IsJumping;
         public bool IsFallingFromJump;
@@ -51,9 +52,6 @@ namespace LethalBots.AI
         public bool StartedJetpackControls;
         public float UpperBodyAnimationsWeight;
         public Vector3 RightArmProceduralTargetBasePosition;
-
-        // HACKHACK: OverrideThrowingObject only exists since ThrowingObject can be changed in RPCs which are called
-        // after update is run and will get overriden next PlayerControllerB updated.
         public Overrideable<bool> ThrowingObject = new Overrideable<bool>(false);
         public Overrideable<float> TimeSinceSwitchingSlots = new Overrideable<float>(0f);
         public float TimeSinceTakingGravityDamage;

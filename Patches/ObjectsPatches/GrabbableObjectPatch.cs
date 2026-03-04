@@ -6,6 +6,7 @@ using LethalBots.Utils;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 
@@ -33,115 +34,21 @@ namespace LethalBots.Patches.ObjectsPatches
             return !LethalBotManager.Instance.IsAnLethalBotAiOwnerOfObject(__instance);
         }
 
-        // TODO: Change this into a transpiler so we can make it more comptable with other mods!
         [HarmonyPatch("DiscardItemOnClient")]
-        [HarmonyPrefix]
-        static bool DiscardItemOnClient_PreFix(GrabbableObject __instance)
-        {
-            if (!__instance.IsOwner)
-            {
-                return true;
-            }
-            PlayerControllerB? lethalBotController = __instance.playerHeldBy;
-            if (lethalBotController != null)
-            {
-                LethalBotAI? lethalBotAI = LethalBotManager.Instance.GetLethalBotAIIfLocalIsOwner(lethalBotController);
-                if (lethalBotAI != null)
-                {
-                    __instance.DiscardItem();
-                    lethalBotAI.SyncBatteryLethalBotServerRpc(__instance.NetworkObject, (int)(__instance.insertedBattery.charge * 100f));
-                    if (__instance.itemProperties.syncDiscardFunction)
-                    {
-                        __instance.isSendingItemRPC++;
-                        lethalBotAI.DiscardItemServerRpc(__instance.NetworkObject);
-                    }
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        [HarmonyPatch("DiscardItem")]
-        [HarmonyPrefix]
-        static bool DiscardItem_PreFix(GrabbableObject __instance)
-        {
-            PlayerControllerB? lethalBotController = __instance.playerHeldBy;
-            if (lethalBotController == null
-                || !LethalBotManager.Instance.IsPlayerLethalBot(lethalBotController))
-            {
-                return true;
-            }
-
-            __instance.playerHeldBy.IsInspectingItem = false;
-            __instance.playerHeldBy.activatingItem = false;
-            __instance.playerHeldBy = null;
-            return false;
-        }
-
-        /// <summary>
-        /// ScanNodeProperties can be null, so perfix patch to cover cases with ragdoll bodies only
-        /// </summary>
-        /// <returns></returns>
-        [HarmonyPatch("SetScrapValue")]
-        [HarmonyPrefix]
-        static bool SetScrapValue_PreFix(GrabbableObject __instance, int setValueTo)
-        {
-            RagdollGrabbableObject? ragdollGrabbableObject = __instance as RagdollGrabbableObject;
-            if (ragdollGrabbableObject == null)
-            {
-                // Other scrap = do base game logic
-                return true;
-            }
-
-            LethalBotAI? lethalBotAI = LethalBotManager.Instance.GetLethalBotAI(ragdollGrabbableObject.bodyID.Value);
-            if (lethalBotAI == null)
-            {
-                if (ragdollGrabbableObject.gameObject.GetComponentInChildren<ScanNodeProperties>() == null)
-                {
-                    // ragdoll of irl player with ScanNodeProperties null, we do the base game logic without the error
-                    __instance.scrapValue = setValueTo;
-                    return false;
-                }
-
-                return true;
-            }
-
-            if (lethalBotAI.NpcController.Npc.isPlayerDead
-                && ragdollGrabbableObject.gameObject.GetComponentInChildren<ScanNodeProperties>() == null)
-            {
-                if (ragdollGrabbableObject.gameObject.GetComponentInChildren<ScanNodeProperties>() == null)
-                {
-                    // ragdoll of bot with ScanNodeProperties null, we do the base game logic without the error
-                    __instance.scrapValue = setValueTo;
-                    return false;
-                }
-
-                return true;
-            }
-
-            // Grabbable ragdoll body, not sellable, bot not dead
-            return false;
-        }
-
-        [HarmonyReversePatch(type: HarmonyReversePatchType.Snapshot)]
-        [HarmonyPriority(Priority.Last)]
-        [HarmonyPatch(nameof(GrabbableObject.Update))]
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        public static void GrabbableObject_Update_ReversePatch(RagdollGrabbableObject instance) => throw new NotImplementedException("Stub LethalBot.Patches.NpcPatches.GrabbableObjectPatch.GrabbableObject_Update_ReversePatch");
-
-        [HarmonyPatch("EquipItem")]
         [HarmonyTranspiler]
-        public static IEnumerable<CodeInstruction> EquipItem_Transpiler(IEnumerable<CodeInstruction> instructions)
+        static IEnumerable<CodeInstruction> DiscardItemOnClient_Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
         {
             var startIndex = -1;
             var codes = new List<CodeInstruction>(instructions);
 
+            MethodInfo getHUDManagerInstance = AccessTools.PropertyGetter(typeof(HUDManager), "Instance");
+            MethodInfo clearControlTipsMethod = AccessTools.Method(typeof(HUDManager), "ClearControlTips");
+
             // ----------------------------------------------------------------------
-            for (var i = 0; i < codes.Count - 3; i++)
+            for (var i = 0; i < codes.Count - 1; i++)
             {
-                if (codes[i].ToString() == "call static HUDManager HUDManager::get_Instance()"//3
-                    && codes[i + 1].ToString() == "callvirt void HUDManager::ClearControlTips()"
-                    && codes[i + 3].ToString() == "callvirt virtual void GrabbableObject::SetControlTipsForItem()")
+                if (codes[i].Calls(getHUDManagerInstance)
+                    && codes[i + 1].Calls(clearControlTipsMethod))
                 {
                     startIndex = i;
                     break;
@@ -149,11 +56,140 @@ namespace LethalBots.Patches.ObjectsPatches
             }
             if (startIndex > -1)
             {
+                // Create our label's destination....
+                Label skipSnapshot = generator.DefineLabel();
+                var nop = new CodeInstruction(OpCodes.Nop);
+                nop.labels.Add(skipSnapshot);
+                codes.Insert(startIndex + 2, nop); // Set label to the instruction **after** the ClearControlTips call
+
+                // Insert new method call to skip ClearControlTips if a bot is dropping the item
                 List<CodeInstruction> codesToAdd = new List<CodeInstruction>
                 {
                     new CodeInstruction(OpCodes.Ldarg_0),
                     new CodeInstruction(OpCodes.Call, PatchesUtil.IsAnLethalBotAiOwnerOfObjectMethod),
-                    new CodeInstruction(OpCodes.Brtrue_S, codes[startIndex + 4].labels[0])
+                    new CodeInstruction(OpCodes.Brtrue_S, skipSnapshot)
+                };
+                codes.InsertRange(startIndex, codesToAdd);
+                startIndex = -1;
+            }
+            else
+            {
+                Plugin.LogError($"LethalBot.Patches.ObjectsPatches.DiscardItemOnClient_Transpiler could not remove check if holding player is bot");
+            }
+
+            return codes.AsEnumerable();
+        }
+
+        [HarmonyPatch("DiscardItem")]
+        [HarmonyPrefix]
+        static void DiscardItem_PreFix(GrabbableObject __instance)
+        {
+            PlayerControllerB? lethalBotController = __instance.playerHeldBy;
+            if (lethalBotController == null
+                || __instance.IsOwner
+                || !LethalBotManager.Instance.IsPlayerLethalBot(lethalBotController))
+            {
+                return;
+            }
+
+            // This is needed incase the bot changes ownership to another player!
+            __instance.playerHeldBy.IsInspectingItem = false;
+            __instance.playerHeldBy.activatingItem = false;
+        }
+
+        [HarmonyPatch("DiscardItem")]
+        [HarmonyTranspiler]
+        static IEnumerable<CodeInstruction> DiscardItem_Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
+        {
+            var startIndex = -1;
+            var codes = new List<CodeInstruction>(instructions);
+
+            // HUDManager methods
+            MethodInfo getHUDManagerInstance = AccessTools.PropertyGetter(typeof(HUDManager), "Instance");
+            MethodInfo clearControlTipsMethod = AccessTools.Method(typeof(HUDManager), "ClearControlTips");
+
+            // Replacement field: this.playerHeldBy
+            FieldInfo playerHeldByField = AccessTools.Field(typeof(GrabbableObject), "playerHeldBy");
+
+            // ----------------------------------------------------------------------
+            for (var i = 0; i < codes.Count - 1; i++)
+            {
+                if (codes[i].Calls(getHUDManagerInstance)
+                    && codes[i + 1].Calls(clearControlTipsMethod))
+                {
+                    startIndex = i;
+                    break;
+                }
+            }
+            if (startIndex > -1)
+            {
+                // Create our label's destination....
+                Label skipSnapshot = generator.DefineLabel();
+                var nop = new CodeInstruction(OpCodes.Nop);
+                nop.labels.Add(skipSnapshot);
+                codes.Insert(startIndex + 2, nop); // Set label to the instruction **after** the ClearControlTips call
+
+                // Insert new method call to skip ClearControlTips if a bot is dropping the item
+                List<CodeInstruction> codesToAdd = new List<CodeInstruction>
+                {
+                    new CodeInstruction(OpCodes.Ldarg_0),
+                    new CodeInstruction(OpCodes.Ldfld, playerHeldByField), // Load `playerHeldBy`
+                    new CodeInstruction(OpCodes.Call, PatchesUtil.IsPlayerLethalBotMethod),
+                    new CodeInstruction(OpCodes.Brtrue_S, skipSnapshot)
+                };
+                codes.InsertRange(startIndex, codesToAdd);
+                startIndex = -1;
+            }
+            else
+            {
+                Plugin.LogError($"LethalBot.Patches.ObjectsPatches.DiscardItem_Transpiler could not remove check if holding player is bot");
+            }
+
+            return codes.AsEnumerable();
+        }
+
+        [HarmonyPatch("EquipItem")]
+        [HarmonyTranspiler]
+        public static IEnumerable<CodeInstruction> EquipItem_Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
+        {
+            var startIndex = -1;
+            var codes = new List<CodeInstruction>(instructions);
+
+            // HUDManager methods
+            MethodInfo getHUDManagerInstance = AccessTools.PropertyGetter(typeof(HUDManager), "Instance");
+            MethodInfo clearControlTipsMethod = AccessTools.Method(typeof(HUDManager), "ClearControlTips");
+            MethodInfo setControlTipsForItemMethod = AccessTools.Method(typeof(GrabbableObject), "SetControlTipsForItem");
+
+            // Replacement field: this.playerHeldBy
+            FieldInfo playerHeldByField = AccessTools.Field(typeof(GrabbableObject), "playerHeldBy");
+
+            // ----------------------------------------------------------------------
+            for (var i = 0; i < codes.Count - 3; i++)
+            {
+                if (codes[i].Calls(getHUDManagerInstance)
+                    && codes[i + 1].Calls(clearControlTipsMethod)
+                    && codes[i + 2].IsLdarg(0)
+                    && codes[i + 3].Calls(setControlTipsForItemMethod))
+                {
+                    startIndex = i;
+                    break;
+                }
+            }
+            if (startIndex > -1)
+            {
+                // Create our label's destination....
+                Label skipSnapshot = generator.DefineLabel();
+                var nop = new CodeInstruction(OpCodes.Nop);
+                nop.labels.Add(skipSnapshot);
+                codes.Insert(startIndex + 4, nop); // Set label to the instruction **after** the ClearControlTips call
+
+                // Insert new method call to skip ClearControlTips if a bot is equiping the item
+                List<CodeInstruction> codesToAdd = new List<CodeInstruction>
+                {
+                    new CodeInstruction(OpCodes.Ldarg_0),
+                    new CodeInstruction(OpCodes.Ldfld, playerHeldByField), // Load `playerHeldBy`
+                    new CodeInstruction(OpCodes.Call, PatchesUtil.IsPlayerLethalBotMethod),
+                    new CodeInstruction(OpCodes.Brtrue_S, skipSnapshot)
                 };
                 codes.InsertRange(startIndex, codesToAdd);
                 startIndex = -1;
