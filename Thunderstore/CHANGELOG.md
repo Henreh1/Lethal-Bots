@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.0.1 - 2026-3-4
+Just some minor bug fixes!
+- Fixed some logic errors in CollectPurchasedItemsState
+- Split some of the dropship landing checks into helper functions
+- Fixed bots failing properly terminate the CollectPurchasedItemsState in some rare circumstances
+- Adjusted some MissionControlState logic for CollectPurchasedItemsState
+- Bots no longer consider items with no value as scrap, even if the itemProperties tells us so
+- Fixed StartOfRound.SyncAlreadyHeldObjectsClientRpc not setting bot's HeldItem
+- Fixed PlayerControllerB.TeleportPlayer not properly setting teleportingThisFrame for bots
+- Made a proper transpiler for GrabbableObject.DiscardItem, GrabbableObject.DiscardItemOnClient, and GrabbableObject.EquipItem which fixes the hacky prefix rpc patches.......
+- Made some optimizations
+
 ## 3.0.0 - 2026-2-27
 Alright, its time for the next update. This time improving how bots use the terminal and allowing them to buy stuff on it. There is a config file that allows you to specify what items to buy and how much to keep stocked on the ship. The config system **HAS BEEN CHANGED**, instead of keeping track of two files Default and User. A general Identity and Stock config file will be created. This allows you to make edits directly without my mod overriding it anymore. If you want to reset said config files, its a simple as deleting them. My mod will recreate them automatically. This doesn't apply to the Loadout system since it loads both Default and User config files and the Default loadouts can be overridden in the User config file as desired. Now, onto the patch notes!
 

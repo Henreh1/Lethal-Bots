@@ -428,7 +428,7 @@ namespace LethalBots.AI
                 {
                     // If we are using a trigger, set our position and rotation to it!
                     InteractTrigger ourTrigger = NpcController.Npc.currentTriggerInAnimationWith;
-                    if (ourTrigger != null)
+                    if (ourTrigger != null && !ourTrigger.isLadder)
                     {
                         NpcController.Npc.thisPlayerBody.localPosition = Vector3.Lerp(NpcController.Npc.thisPlayerBody.localPosition, NpcController.Npc.thisPlayerBody.parent.InverseTransformPoint(ourTrigger.playerPositionNode.position), Time.deltaTime * 20f);
                         NpcController.Npc.thisPlayerBody.rotation = Quaternion.Lerp(NpcController.Npc.thisPlayerBody.rotation, ourTrigger.playerPositionNode.rotation, Time.deltaTime * 20f);
@@ -494,7 +494,7 @@ namespace LethalBots.AI
             {
                 // If we are using a trigger, set our position and rotation to it!
                 InteractTrigger ourTrigger = NpcController.Npc.currentTriggerInAnimationWith;
-                if (ourTrigger != null)
+                if (ourTrigger != null && !ourTrigger.isLadder)
                 {
                     NpcController.Npc.thisPlayerBody.localPosition = Vector3.Lerp(NpcController.Npc.thisPlayerBody.localPosition, NpcController.Npc.thisPlayerBody.parent.InverseTransformPoint(ourTrigger.playerPositionNode.position), Time.deltaTime * 20f);
                     NpcController.Npc.thisPlayerBody.rotation = Quaternion.Lerp(NpcController.Npc.thisPlayerBody.rotation, ourTrigger.playerPositionNode.rotation, Time.deltaTime * 20f);
@@ -604,7 +604,7 @@ namespace LethalBots.AI
             {
                 // If we are using a trigger, set our position and rotation to it!
                 InteractTrigger ourTrigger = NpcController.Npc.currentTriggerInAnimationWith;
-                if (ourTrigger != null)
+                if (ourTrigger != null && !ourTrigger.isLadder)
                 {
                     NpcController.Npc.thisPlayerBody.localPosition = Vector3.Lerp(NpcController.Npc.thisPlayerBody.localPosition, NpcController.Npc.thisPlayerBody.parent.InverseTransformPoint(ourTrigger.playerPositionNode.position), Time.deltaTime * 20f);
                     NpcController.Npc.thisPlayerBody.rotation = Quaternion.Lerp(NpcController.Npc.thisPlayerBody.rotation, ourTrigger.playerPositionNode.rotation, Time.deltaTime * 20f);
@@ -637,11 +637,12 @@ namespace LethalBots.AI
             }
 
             // Do stuck detection
-            if (NpcController.HasToMove || (agent.isActiveAndEnabled && !agent.isOnNavMesh && !agent.isOnOffMeshLink))
+            if (NpcController.HasToMove || (agent.isActiveAndEnabled && !agent.isOnNavMesh))
             {
                 // If we are stuck, teleport to the closest node!
                 StartOfRound instanceSOR = StartOfRound.Instance;
                 if (agent.velocity.sqrMagnitude < 0.002f
+                    && !agent.isOnOffMeshLink
                     && !IsInsideElevator
                     && instanceSOR.shipHasLanded
                     && !instanceSOR.shipIsLeaving
@@ -834,8 +835,7 @@ namespace LethalBots.AI
             {
                 return true;
             }
-            if (NpcController.Npc.currentTriggerInAnimationWith != null 
-                && !NpcController.Npc.isClimbingLadder)
+            if (NpcController.Npc.currentTriggerInAnimationWith != null)
             {
                 return true;
             }
@@ -2921,26 +2921,43 @@ namespace LethalBots.AI
                 closestLinkPos = linkEndPos;
             }
 
+            InteractTrigger? closestLadder = null;
+            float closestLadderDistSqr = Const.DISTANCE_NPCBODY_FROM_LADDER * Const.DISTANCE_NPCBODY_FROM_LADDER;
             foreach (InteractTrigger ladder in laddersInteractTrigger)
             {
+                // Setup important local variables
                 Vector3 ladderBottomPos = ladder.bottomOfLadderPosition.position;
                 Vector3 ladderTopPos = ladder.topOfLadderPosition.position;
+                float ladderDistSqrToBottom = (ladderBottomPos - closestLinkPos).sqrMagnitude;
+                float ladderDistSqrToTop = (ladderTopPos - closestLinkPos).sqrMagnitude;
 
-                float ladderDistSqr = Const.DISTANCE_NPCBODY_FROM_LADDER * Const.DISTANCE_NPCBODY_FROM_LADDER;
-                if ((ladderBottomPos - closestLinkPos).sqrMagnitude < ladderDistSqr)
+                // Find the closest part of the ladder to us!
+                Vector3 closestLadderPos;
+                float bestLadderDistSqr;
+                bool climbUp;
+                if (ladderDistSqrToBottom < ladderDistSqrToTop)
                 {
-                    Plugin.LogDebug($"{NpcController.Npc.playerUsername} Path wants to climb UP ladder");
-                    NpcController.OrderToGoUpDownLadder(hasToGoDown: false);
-                    return ladder;
+                    closestLadderPos = ladderBottomPos;
+                    bestLadderDistSqr = ladderDistSqrToBottom;
+                    climbUp = true;
                 }
-                else if ((ladderTopPos - closestLinkPos).sqrMagnitude < ladderDistSqr)
+                else
                 {
-                    Plugin.LogDebug($"{NpcController.Npc.playerUsername} Path wants to climb DOWN ladder");
-                    NpcController.OrderToGoUpDownLadder(hasToGoDown: true);
-                    return ladder;
+                    closestLadderPos = ladderTopPos;
+                    bestLadderDistSqr = ladderDistSqrToTop;
+                    climbUp = false;
+                }
+
+                // Check if this is the closest ladder
+                if (bestLadderDistSqr < closestLadderDistSqr)
+                {
+                    Plugin.LogDebug($"{NpcController.Npc.playerUsername} Path wants to climb {(climbUp ? "UP" : "DOWN")} ladder");
+                    NpcController.OrderToGoUpDownLadder(hasToGoDown: !climbUp);
+                    closestLadderDistSqr = bestLadderDistSqr;
+                    closestLadder = ladder;
                 }
             }
-            return null;
+            return closestLadder;
         }
 
         /// <summary>
@@ -3367,7 +3384,8 @@ namespace LethalBots.AI
         /// <returns>true: the lethalBot is using or is waiting to use the ladder, else false</returns>
         private bool UseLadderIfNeeded()
         {
-            if (NpcController.Npc.isClimbingLadder)
+            if (NpcController.Npc.isClimbingLadder 
+                || useLadderCoroutine != null)
             {
                 return true;
             }
@@ -3378,7 +3396,7 @@ namespace LethalBots.AI
                 // If this is a gap, do the default logic instead!
                 if (agent.isOnOffMeshLink && offMeshLinkCoroutine == null)
                 {
-                    offMeshLinkCoroutine = StartCoroutine(autoTraverseOffMeshLink());
+                    offMeshLinkCoroutine = StartCoroutine(offMeshLinkParabola(agent, NpcController.Npc.jumpForce));
                 }
                 return false;
             }
@@ -3386,8 +3404,11 @@ namespace LethalBots.AI
             // Lethal Bot wants to use ladder
             if (Plugin.Config.TeleportWhenUsingLadders.Value)
             {
-                NpcController.Npc.transform.position = this.transform.position;
-                agent.CompleteOffMeshLink();
+                if (agent.isOnOffMeshLink)
+                {
+                    TeleportLethalBot(agent.currentOffMeshLinkData.endPos, isOutside);
+                    agent.CompleteOffMeshLink();
+                }
                 return true;
             }
 
@@ -3428,7 +3449,7 @@ namespace LethalBots.AI
         /// <param name="agent"></param>
         /// <param name="height"></param>
         /// <returns></returns>
-        private IEnumerator OffMeshLinkParabola(NavMeshAgent agent, float height)
+        private IEnumerator offMeshLinkParabola(NavMeshAgent agent, float height)
         {
             OffMeshLinkData data = agent.currentOffMeshLinkData;
             Vector3 startPos = this.transform.position;
@@ -3669,7 +3690,7 @@ namespace LethalBots.AI
             {
                 return false;
             }
-            return item.itemProperties.isScrap;
+            return item.itemProperties.isScrap && item.scrapValue > 0;
         }
 
         /// <summary>
@@ -6672,43 +6693,6 @@ namespace LethalBots.AI
             });
         }
 
-        [ServerRpc(RequireOwnership = false)]
-        internal void DiscardItemServerRpc(NetworkObjectReference discardObjectNetwork)
-        {
-            if (discardObjectNetwork.TryGet(out NetworkObject networkObject, null))
-            {
-                DiscardItemClientRpc(networkObject);
-            }
-            else
-            {
-                Plugin.LogError($"Lethal Bot {this.NpcController.Npc.playerUsername} on client #{NetworkManager.LocalClientId} (server) discard item : Object was not discarded because it does not exist on the server.");
-            }
-        }
-
-        [ClientRpc]
-        private void DiscardItemClientRpc(NetworkObjectReference discardObjectNetwork)
-        {
-            if (discardObjectNetwork.TryGet(out NetworkObject networkObject, null))
-            {
-                GrabbableObject? itemToDiscard = networkObject.GetComponent<GrabbableObject>();
-                if (itemToDiscard != null)
-                {
-                    if (!itemToDiscard.IsOwner)
-                    {
-                        itemToDiscard.DiscardItem();
-                    }
-                }
-                else
-                {
-                    Plugin.LogError($"Lethal Bot {this.NpcController.Npc.playerUsername} on client #{NetworkManager.LocalClientId} discard item : The server did not have a reference to the grabbable object");
-                }
-            }
-            else
-            {
-                Plugin.LogError($"Lethal Bot {this.NpcController.Npc.playerUsername} on client #{NetworkManager.LocalClientId} discard item : The server did not have a reference to the object");
-            }
-        }
-
         /// <summary>
         /// Destorys the grabbable object in the given slot!
         /// </summary>
@@ -6765,9 +6749,11 @@ namespace LethalBots.AI
         /// </summary>
         public void DropAllHeldItems(bool itemsFall = true)
         {
-            for (int i = 0; i < NpcController.Npc.ItemSlots.Length; i++)
+            PlayerControllerB lethalBotController = NpcController.Npc;
+            GrabbableObject?[] itemSlots = lethalBotController.ItemSlots;
+            for (int i = 0; i < itemSlots.Length; i++)
             {
-                GrabbableObject grabbableObject = NpcController.Npc.ItemSlots[i];
+                GrabbableObject? grabbableObject = itemSlots[i];
                 if (grabbableObject == null)
                 {
                     continue;
@@ -6777,15 +6763,15 @@ namespace LethalBots.AI
                     DictJustDroppedItems[grabbableObject] = Time.realtimeSinceStartup;
                     grabbableObject.parentObject = null;
                     grabbableObject.heldByPlayerOnServer = false;
-                    if (NpcController.Npc.isInElevator)
+                    if (lethalBotController.isInElevator)
                     {
-                        grabbableObject.transform.SetParent(NpcController.Npc.playersManager.elevatorTransform, worldPositionStays: true);
+                        grabbableObject.transform.SetParent(lethalBotController.playersManager.elevatorTransform, worldPositionStays: true);
                     }
                     else
                     {
-                        grabbableObject.transform.SetParent(NpcController.Npc.playersManager.propsContainer, worldPositionStays: true);
+                        grabbableObject.transform.SetParent(lethalBotController.playersManager.propsContainer, worldPositionStays: true);
                     }
-                    NpcController.Npc.SetItemInElevator(NpcController.Npc.isInHangarShipRoom, NpcController.Npc.isInElevator, grabbableObject);
+                    lethalBotController.SetItemInElevator(lethalBotController.isInHangarShipRoom, lethalBotController.isInElevator, grabbableObject);
                     grabbableObject.EnablePhysics(enable: true);
                     grabbableObject.EnableItemMeshes(enable: true);
                     grabbableObject.transform.localScale = grabbableObject.originalScale;
@@ -6804,23 +6790,23 @@ namespace LethalBots.AI
                     }
                 }
 
-                NpcController.Npc.ItemSlots[i] = null;
+                itemSlots[i] = null;
             }
-            if (NpcController.Npc.isHoldingObject)
+            if (lethalBotController.isHoldingObject)
             {
-                NpcController.Npc.isHoldingObject = false;
+                lethalBotController.isHoldingObject = false;
                 if (!this.AreHandsFree())
                 {
                     this.SetSpecialGrabAnimationBool(false, this.HeldItem);
                 }
-                NpcController.Npc.playerBodyAnimator.SetBool(Const.PLAYER_ANIMATION_BOOL_CANCELHOLDING, true);
-                NpcController.Npc.playerBodyAnimator.SetTrigger(Const.PLAYER_ANIMATION_TRIGGER_THROW);
+                lethalBotController.playerBodyAnimator.SetBool(Const.PLAYER_ANIMATION_BOOL_CANCELHOLDING, true);
+                lethalBotController.playerBodyAnimator.SetTrigger(Const.PLAYER_ANIMATION_TRIGGER_THROW);
             }
             this.HeldItem = null;
-            NpcController.Npc.activatingItem = false;
-            NpcController.Npc.twoHanded = false;
-            NpcController.Npc.carryWeight = 1f;
-            NpcController.Npc.currentlyHeldObjectServer = null;
+            lethalBotController.activatingItem = false;
+            lethalBotController.twoHanded = false;
+            lethalBotController.carryWeight = 1f;
+            lethalBotController.currentlyHeldObjectServer = null;
         }
 
         /// <summary>
@@ -6829,15 +6815,15 @@ namespace LethalBots.AI
         public void DespawnHeldObject()
         {
             GrabbableObject? grabbableObject = this.HeldItem;
-            Plugin.LogDebug($"{NpcController.Npc.playerUsername} Try to despawn held item");
+            PlayerControllerB lethalBot = NpcController.Npc;
+            Plugin.LogDebug($"{lethalBot.playerUsername} Try to despawn held item");
             if (grabbableObject == null)
             {
-                Plugin.LogError($"{NpcController.Npc.playerUsername} Try to despawn, but bot is holding nothing");
+                Plugin.LogError($"{lethalBot.playerUsername} Try to despawn, but bot is holding nothing");
                 return;
             }
 
             // Discard for player
-            PlayerControllerB lethalBot = NpcController.Npc;
             Plugin.LogDebug($"{lethalBot.playerUsername} Try to despawn held item {this.HeldItem} on owner #{this.OwnerClientId} and sync");
             lethalBot.playerBodyAnimator.SetBool(Const.PLAYER_ANIMATION_BOOL_CANCELHOLDING, true);
             lethalBot.playerBodyAnimator.SetTrigger(Const.PLAYER_ANIMATION_TRIGGER_THROW);
@@ -6854,15 +6840,15 @@ namespace LethalBots.AI
         private void DespawnHeldObjectOnClient()
         {
             // Discard for player
-            Plugin.LogDebug($"{NpcController.Npc.playerUsername} Try to despawn held item on client #{NetworkManager.LocalClientId}");
+            PlayerControllerB lethalBot = NpcController.Npc;
+            Plugin.LogDebug($"{lethalBot.playerUsername} Try to despawn held item on client #{NetworkManager.LocalClientId}");
             if (this.AreHandsFree())
             {
-                Plugin.LogError($"{NpcController.Npc.playerUsername} Try to despawn, but bot is holding nothing on client #{NetworkManager.LocalClientId}");
+                Plugin.LogError($"{lethalBot.playerUsername} Try to despawn, but bot is holding nothing on client #{NetworkManager.LocalClientId}");
                 return;
             }
 
-            Plugin.LogDebug($"{NpcController.Npc.playerUsername} Try to despawn held item {this.HeldItem} on client #{NetworkManager.LocalClientId}");
-            PlayerControllerB lethalBot = NpcController.Npc;
+            Plugin.LogDebug($"{lethalBot.playerUsername} Try to despawn held item {this.HeldItem} on client #{NetworkManager.LocalClientId}");
             GrabbableObject?[] itemSlots = lethalBot.ItemSlots;
             for (int i = 0; i < itemSlots.Length; i++)
             {
@@ -7610,51 +7596,6 @@ namespace LethalBots.AI
             // Alright, we don't want to be the operator anymore!
             switchboardPhone.OperatorSwitch(NpcController.Npc);
         }
-
-        #endregion
-
-        #region Vote to leave early RPC
-
-        /*[ServerRpc(RequireOwnership = false)]
-        public void LethalBotVoteToLeaveEarlyServerRpc()
-        {
-            // I had to recreate the the functions as its easier than editing the base functions!
-            TimeOfDay instanceTOD = TimeOfDay.Instance;
-            int num = StartOfRound.Instance.connectedPlayersAmount + 1 - StartOfRound.Instance.livingPlayers;
-            instanceTOD.votesForShipToLeaveEarly++;
-            if (instanceTOD.votesForShipToLeaveEarly >= num)
-            {
-                instanceTOD.SetShipLeaveEarlyClientRpc(instanceTOD.normalizedTimeOfDay + 0.1f, instanceTOD.votesForShipToLeaveEarly);
-            }
-            else
-            {
-                instanceTOD.AddVoteForShipToLeaveEarlyClientRpc();
-            }
-        }*/
-
-        /*[ClientRpc]
-        public void AddVoteForShipToLeaveEarlyClientRpc()
-        {
-            // If we are the host or server, we shouldn't increment this as we would be doing it twice!
-            if (!IsServer && !IsHost)
-            {
-                TimeOfDay.Instance.votesForShipToLeaveEarly++;
-            }
-            HUDManager.Instance.SetShipLeaveEarlyVotesText(TimeOfDay.Instance.votesForShipToLeaveEarly);
-        }*/
-
-        /*[ClientRpc]
-        public void SetShipLeaveEarlyClientRpc(float timeToLeaveEarly, int votes)
-        {
-            TimeOfDay instanceTOD = TimeOfDay.Instance;
-            instanceTOD.votesForShipToLeaveEarly = votes;
-            HUDManager.Instance.SetShipLeaveEarlyVotesText(votes);
-            instanceTOD.shipLeaveAutomaticallyTime = timeToLeaveEarly;
-            instanceTOD.shipLeavingAlertCalled = true;
-            instanceTOD.shipLeavingEarlyDialogue[0].bodyText = "WARNING! Please return by " + HUDManager.Instance.SetClock(timeToLeaveEarly, instanceTOD.numberOfHours, createNewLine: false) + ". A vote has been cast, and the autopilot ship will leave early.";
-            HUDManager.Instance.ReadDialogue(instanceTOD.shipLeavingEarlyDialogue);
-            HUDManager.Instance.shipLeavingEarlyIcon.enabled = true;
-        }*/
 
         #endregion
 
@@ -8693,16 +8634,6 @@ namespace LethalBots.AI
             StartOfRound playersManager = startMatchLever.playersManager;
             if (playersManager.shipHasLanded && !playersManager.shipIsLeaving && !playersManager.shipLeftAutomatically)
             {
-                // As much as I would love to do this, most of the class is set to internal making this impossible!
-                // Unless I use a lot of hacks.........
-                /*if (Plugin.IsModFacilityMeltdownLoaded)
-                {
-                    MeltdownHandler? meltdown = (MeltdownHandler)AccessTools.Property(typeof(MeltdownHandler), "Instance").GetValue(null);
-                    if (meltdown != null && AccessTools.Property(typeof(MeltdownPlugin), "config").GetValue(null).ShortenMeltdownTimerOnShipLeave)
-                    {
-                        AccessTools.Field(typeof(MeltdownHandler), "meltdownTimer").SetValue(meltdown, 3f);
-                    }
-                }*/
                 // This is my attempt to call the method from Facility Meltdown
                 // Uses HarmonyX's AccessTools to get the type and method
                 if (Plugin.IsModFacilityMeltdownLoaded)

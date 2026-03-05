@@ -39,6 +39,7 @@ namespace LethalBots.AI
         public TimedUpdateBillboardLookAtCheck UpdateBillBoardLookAtTimedCheck = null!;
 
         // Public variables to pass to patch
+        // NEEDTOVALIDATE: Would it be better if I used accesstools and used FieldRef instead?
         public bool IsCameraDisabled;
         public bool IsJumping;
         public bool IsFallingFromJump;
@@ -51,9 +52,6 @@ namespace LethalBots.AI
         public bool StartedJetpackControls;
         public float UpperBodyAnimationsWeight;
         public Vector3 RightArmProceduralTargetBasePosition;
-
-        // HACKHACK: OverrideThrowingObject only exists since ThrowingObject can be changed in RPCs which are called
-        // after update is run and will get overriden next PlayerControllerB updated.
         public Overrideable<bool> ThrowingObject = new Overrideable<bool>(false);
         public Overrideable<float> TimeSinceSwitchingSlots = new Overrideable<float>(0f);
         public float TimeSinceTakingGravityDamage;
@@ -115,7 +113,7 @@ namespace LethalBots.AI
 
         public Vector2 lastMoveVector;
         private float floatSprint;
-        private bool goDownLadder;
+        internal bool goDownLadder;
 
         private int[] animationHashLayers = null!;
         private List<int> currentAnimationStateHash = null!;
@@ -951,7 +949,7 @@ namespace LethalBots.AI
             if (goDownLadder)
             {
                 direction = -Npc.thisPlayerBody.up;
-                origin = Npc.gameplayCamera.transform.position;
+                origin = Npc.transform.position;
             }
             if (!Physics.Raycast(origin, direction, 0.15f, StartOfRound.Instance.allPlayersCollideWithMask, QueryTriggerInteraction.Ignore))
             {
@@ -2337,7 +2335,7 @@ namespace LethalBots.AI
         /// <returns></returns>
         public bool CanUseLadder(InteractTrigger ladder)
         {
-            if (ladder.usingLadder)
+            if (LethalBotAIController.useLadderCoroutine != null)
             {
                 return false;
             }

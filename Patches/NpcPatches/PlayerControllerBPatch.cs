@@ -586,6 +586,7 @@ namespace LethalBots.Patches.NpcPatches
         [HarmonyPrefix]
         static bool TeleportPlayer_PreFix(PlayerControllerB __instance,
                                           Vector3 pos,
+                                          ref bool ___teleportingThisFrame,
                                           bool withRotation = false,
                                           float rot = 0f,
                                           bool allowInteractTrigger = false)
@@ -594,6 +595,7 @@ namespace LethalBots.Patches.NpcPatches
             if (lethalBotAI != null)
             {
                 StartOfRound.Instance.playerTeleportedEvent.Invoke(__instance);
+                ___teleportingThisFrame = true;
                 lethalBotAI.NpcController.TeleportingThisFrame = true;
                 __instance.teleportedLastFrame = true;
                 lethalBotAI.TeleportLethalBot(pos, withRotation: withRotation, rot: rot, allowInteractTrigger: allowInteractTrigger);

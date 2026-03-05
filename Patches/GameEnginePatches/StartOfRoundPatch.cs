@@ -1,7 +1,8 @@
-﻿using HarmonyLib;
+﻿using GameNetcodeStuff;
+using HarmonyLib;
+using LethalBots.AI;
 using LethalBots.Constants;
 using LethalBots.Managers;
-using LethalBots.AI;
 using LethalBots.Patches.EnemiesPatches;
 using LethalBots.Utils;
 using System;
@@ -89,6 +90,26 @@ namespace LethalBots.Patches.GameEnginePatches
         static void ReviveDeadPlayers_PostFix()
         {
             LethalBotManager.Instance.SyncEndOfRoundLethalBots();
+        }
+
+        [HarmonyPatch("SyncAlreadyHeldObjectsClientRpc")]
+        [HarmonyPostfix]
+        static void SyncAlreadyHeldObjectsClientRpc_PostFix(StartOfRound __instance)
+        {
+            if (LethalBotManager.Instance == null)
+            {
+                return; // No manager means no bots
+            }
+
+            // Update lethal bots held item field
+            foreach (LethalBotAI lethalBotAI in LethalBotManager.Instance.GetLethalBotAIs())
+            {
+                PlayerControllerB? lethalBotController = lethalBotAI?.NpcController?.Npc;
+                if (lethalBotController != null && lethalBotController.currentlyHeldObjectServer != null)
+                {
+                    lethalBotAI?.HeldItem = lethalBotController.currentlyHeldObjectServer;
+                }
+            }
         }
 
         /// <summary>
