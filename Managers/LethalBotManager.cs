@@ -2668,7 +2668,7 @@ namespace LethalBots.Managers
         /// A function to set the hangar ship door state from the server!
         /// </summary>
         /// <remarks>
-        /// This is a hacky way to sync the door state since I don't know how to get the interact triggers used by the main game.
+        /// This is a hacky way to sync the door state since I don't know how to get the interact triggers used by the main game.<br/>
         /// This is similar to how the <see cref="GiantKiwiAI.BreakIntoShip"/> code does it.
         /// </remarks>
         /// <param name="isClosed"></param>
@@ -3346,6 +3346,7 @@ namespace LethalBots.Managers
         {
             DictEnemyAINoiseListeners.Clear();
             ListEnemyAINonNoiseListeners.Clear();
+            GroupManager.Instance.ResetAndRemoveAllGroups();
 
             // Clear the mission controller bot!
             // No need for an RPC here since this is called for all players!
@@ -4012,10 +4013,7 @@ namespace LethalBots.Managers
         {
             if (base.IsServer)
             {
-                if (LootTransferPlayers.Contains(playerToRemove))
-                {
-                    LootTransferPlayers.Remove(playerToRemove);
-                }
+                LootTransferPlayers.Remove(playerToRemove);
             }
             else
             {

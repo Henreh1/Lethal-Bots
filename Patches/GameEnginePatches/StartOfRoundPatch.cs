@@ -63,6 +63,12 @@ namespace LethalBots.Patches.GameEnginePatches
                 objectManager.GetComponent<NetworkObject>().Spawn();
             }
 
+            objectManager = Object.Instantiate(PluginManager.Instance.GroupManagerPrefab);
+            if (__instance.NetworkManager.IsHost || __instance.NetworkManager.IsServer)
+            {
+                objectManager.GetComponent<NetworkObject>().Spawn();
+            }
+
             objectManager = Object.Instantiate(PluginManager.Instance.LethalBotManagerPrefab);
             if (__instance.NetworkManager.IsHost || __instance.NetworkManager.IsServer)
             {

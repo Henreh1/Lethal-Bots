@@ -21,6 +21,10 @@ namespace LethalBots.Managers
         /// <c>GameObject</c> prefab of the <c>TerminalManager</c>, see: <see cref="TerminalManager"><c>TerminalManager</c></see>
         /// </summary>
         public GameObject TerminalManagerPrefab = null!;
+        /// <summary>
+        /// <c>GameObject</c> prefab of the <c>GroupManager</c>, see: <see cref="GroupManager"><c>GroupManager</c></see>
+        /// </summary>
+        public GameObject GroupManagerPrefab = null!;
 
         private void Awake()
         {
@@ -50,6 +54,9 @@ namespace LethalBots.Managers
 
             TerminalManagerPrefab = LethalLib.Modules.NetworkPrefabs.CreateNetworkPrefab("TerminalManager");
             TerminalManagerPrefab.AddComponent<TerminalManager>();
+
+            GroupManagerPrefab = LethalLib.Modules.NetworkPrefabs.CreateNetworkPrefab("GroupManager");
+            GroupManagerPrefab.AddComponent<GroupManager>();
         }
     }
 }
