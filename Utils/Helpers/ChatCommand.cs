@@ -10,7 +10,7 @@ namespace LethalBots.Utils.Helpers
     public class ChatCommand
     {
         public string Keyword;
-        public Func<AIState, PlayerControllerB, string, bool, bool> Execute;
+        public Func<AIState, LethalBotAI, PlayerControllerB, string, bool, bool> Execute;
 
         /// <summary>
         /// Creates a new chat command
@@ -22,7 +22,7 @@ namespace LethalBots.Utils.Helpers
         /// <param name="execute"></param>
         public ChatCommand(
             string keyword,
-            Func<AIState, PlayerControllerB, string, bool, bool> execute)
+            Func<AIState, LethalBotAI, PlayerControllerB, string, bool, bool> execute)
         {
             Keyword = keyword.ToLower();
             Execute = execute;

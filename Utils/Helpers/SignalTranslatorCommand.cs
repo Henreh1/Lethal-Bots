@@ -12,7 +12,7 @@ namespace LethalBots.Utils.Helpers
     public class SignalTranslatorCommand
     {
         public string Keyword;
-        public Func<AIState, string, bool> Execute;
+        public Func<AIState, LethalBotAI, string, bool> Execute;
 
         /// <summary>
         /// Creates a new chat command
@@ -24,7 +24,7 @@ namespace LethalBots.Utils.Helpers
         /// <param name="execute"></param>
         public SignalTranslatorCommand(
             string keyword,
-            Func<AIState, string, bool> execute)
+            Func<AIState, LethalBotAI, string, bool> execute)
         {
             Keyword = keyword.ToLower();
             Execute = execute;

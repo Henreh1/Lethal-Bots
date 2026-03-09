@@ -81,7 +81,9 @@ namespace LethalBots.Managers
         /// <returns><see langword="true"/> if the <paramref name="state"/> responded to the chat command; otherwise <see langword="false"/></returns>
         public static bool OnPlayerChatMessageReceived(AIState state, string message, PlayerControllerB playerWhoSentMessage, bool isVoice)
         {
+            // Grab type and AI
             Type stateType = state.GetType();
+            LethalBotAI lethalBotAI = state.ai;
 
             // Check for state specific overrides or custom commands.
             if (stateCommands.TryGetValue(stateType, out var list))
@@ -90,7 +92,7 @@ namespace LethalBots.Managers
                 {
                     if (message.Contains(command.Keyword))
                     {
-                        if (command.Execute(state, playerWhoSentMessage, message, isVoice))
+                        if (command.Execute(state, lethalBotAI, playerWhoSentMessage, message, isVoice))
                         {
                             return true;
                         }
@@ -109,7 +111,7 @@ namespace LethalBots.Managers
             {
                 if (message.Contains(command.Keyword))
                 {
-                    if (command.Execute(state, playerWhoSentMessage, message, isVoice))
+                    if (command.Execute(state, lethalBotAI, playerWhoSentMessage, message, isVoice))
                     {
                         return true;
                     }

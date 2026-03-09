@@ -108,10 +108,18 @@ namespace LethalBots.AI.AIStates
             }
         }
 
-        // We are dead, these messages mean nothing to us!
-        public override void OnSignalTranslatorMessageReceived(string message)
+        /// <inheritdoc cref="AIState.RegisterChatCommands"/>
+        public static new void RegisterChatCommands()
         {
-            return;
+            // We are dead, these messages mean nothing to us!
+            ChatCommandsManager.RegisterIgnoreDefaultForState<BrainDeadState>();
+        }
+
+        /// <inheritdoc cref="AIState.RegisterSignalTranslatorCommands"/>
+        public static new void RegisterSignalTranslatorCommands()
+        {
+            // We are dead, these messages mean nothing to us!
+            SignalTranslatorCommandsManager.RegisterIgnoreDefaultForState<BrainDeadState>();
         }
     }
 }

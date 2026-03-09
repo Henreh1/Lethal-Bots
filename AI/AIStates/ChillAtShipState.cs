@@ -3,6 +3,7 @@ using HarmonyLib;
 using LethalBots.Constants;
 using LethalBots.Enums;
 using LethalBots.Managers;
+using LethalBots.Utils.Helpers;
 using LethalLib.Modules;
 using System.Collections;
 using UnityEngine;
@@ -299,14 +300,14 @@ namespace LethalBots.AI.AIStates
             });
         }
 
-        public override void OnSignalTranslatorMessageReceived(string message)
+        /// <inheritdoc cref="AIState.RegisterSignalTranslatorCommands"/>
+        public static new void RegisterSignalTranslatorCommands()
         {
             // We are chilling at the ship, this message means nothing to us!
-            if (message == "return")
+            SignalTranslatorCommandsManager.RegisterCommandForState<ChillAtShipState>(new SignalTranslatorCommand(Const.RETURN_COMMAND, (state, lethalBotAI, message) =>
             {
-                return;
-            }
-            base.OnSignalTranslatorMessageReceived(message);
+                return true;
+            }));
         }
 
         /// <summary>

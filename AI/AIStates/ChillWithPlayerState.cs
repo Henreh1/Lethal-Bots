@@ -3,6 +3,7 @@ using HarmonyLib;
 using LethalBots.Constants;
 using LethalBots.Enums;
 using LethalBots.Managers;
+using LethalBots.Utils.Helpers;
 using Steamworks.Ugc;
 using UnityEngine;
 
@@ -192,10 +193,21 @@ namespace LethalBots.AI.AIStates
             SetBotLookAt(noisePosition);
         }
 
-        // We are following a player, these messages mean nothing to us!
-        public override void OnSignalTranslatorMessageReceived(string message)
+        /// <inheritdoc cref="AIState.RegisterChatCommands"/>
+        public static new void RegisterChatCommands()
         {
-            return;
+            ChatCommandsManager.RegisterCommandForState<ChillWithPlayerState>(new ChatCommand(Const.GEAR_UP_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
+            {
+                lethalBotAI.State = new GrabLoadoutState(state);
+                return true;
+            }));
+        }
+
+        /// <inheritdoc cref="AIState.RegisterSignalTranslatorCommands"/>
+        public static new void RegisterSignalTranslatorCommands()
+        {
+            // We are following a player, these messages mean nothing to us!
+            SignalTranslatorCommandsManager.RegisterIgnoreDefaultForState<ChillWithPlayerState>();
         }
 
         private void SetBotLookAt(Vector3? position = null)

@@ -268,10 +268,11 @@ namespace LethalBots.AI.AIStates
             });
         }
 
-        // We are following a player, these messages mean nothing to us!
-        public override void OnSignalTranslatorMessageReceived(string message)
+        /// <inheritdoc cref="AIState.RegisterSignalTranslatorCommands"/>
+        public static new void RegisterSignalTranslatorCommands()
         {
-            return;
+            // We are following a player, these messages mean nothing to us!
+            SignalTranslatorCommandsManager.RegisterIgnoreDefaultForState<GetCloseToPlayerState>();
         }
     }
 }

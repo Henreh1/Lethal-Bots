@@ -1,6 +1,7 @@
 ﻿using GameNetcodeStuff;
 using LethalBots.Constants;
 using LethalBots.Enums;
+using LethalBots.Managers;
 using System.Collections;
 using UnityEngine;
 
@@ -228,10 +229,11 @@ namespace LethalBots.AI.AIStates
             });
         }
 
-        // We are following a player, these messages mean nothing to us!
-        public override void OnSignalTranslatorMessageReceived(string message)
+        /// <inheritdoc cref="AIState.RegisterSignalTranslatorCommands"/>
+        public static new void RegisterSignalTranslatorCommands()
         {
-            return;
+            // We are following a player, these messages mean nothing to us!
+            SignalTranslatorCommandsManager.RegisterIgnoreDefaultForState<JustLostPlayerState>();
         }
 
         public override string GetBillboardStateIndicator()

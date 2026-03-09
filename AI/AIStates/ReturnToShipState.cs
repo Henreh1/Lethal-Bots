@@ -3,6 +3,7 @@ using GameNetcodeStuff;
 using LethalBots.Constants;
 using LethalBots.Enums;
 using LethalBots.Managers;
+using LethalBots.Utils.Helpers;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -342,14 +343,16 @@ namespace LethalBots.AI.AIStates
             });
         }
 
-        public override void OnSignalTranslatorMessageReceived(string message)
+        /// <inheritdoc cref="AIState.RegisterSignalTranslatorCommands"/>
+        public static new void RegisterSignalTranslatorCommands()
         {
             // Already heading back to ship!
-            if (message == "return")
+            SignalTranslatorCommandsManager.RegisterCommandForState<ReturnToShipState>(new SignalTranslatorCommand(Const.RETURN_COMMAND, (state, lethalBotAI, message) =>
             {
-                return;
-            }
-            base.OnSignalTranslatorMessageReceived(message);
+                ReturnToShipState returnToShipState = (ReturnToShipState)state;
+                returnToShipState.endIfOutside = false; // We need to head back the entire way!
+                return true;
+            }));
         }
 
         /// <summary>

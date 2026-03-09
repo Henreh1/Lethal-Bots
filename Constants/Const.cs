@@ -132,6 +132,21 @@ namespace LethalBots.Constants
         public const int CROUCHING_IDLE_STATE_HASH = 1917280335;
         public const int CROUCHING_WALKING_STATE_HASH = -483816927;
 
+        // Chat command consts
+        // Its a good idea to use consts for your chat command names!
+        public const string JESTER_COMMAND = "jester";
+        public const string MAN_THE_SHIP_COMMAND = "man the ship";
+        public const string TRANSFER_LOOT_COMMAND = "transfer loot";
+        public const string GEAR_UP_COMMAND = "gear up";
+        public const string START_THE_SHIP_COMMAND = "start the ship";
+        public const string REQUEST_MONITORING_COMMAND = "request monitoring";
+        public const string CLEAR_MONITORING_COMMAND = "clear monitoring";
+        public const string REQUEST_TELEPORT_COMMAND = "request teleport";
+        public const string HOP_OFF_THE_TERMINAL_COMMAND = "hop off the terminal";
+
+        // Signal Translator command consts
+        public const string RETURN_COMMAND = "return";
+
         // BrainDeadState
         public const float MIN_TIME_TO_VOTE = 0.5f;
         public const float MAX_TIME_TO_VOTE = 1.5f;

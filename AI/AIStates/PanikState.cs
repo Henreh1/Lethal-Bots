@@ -4,6 +4,7 @@ using LethalBots.Constants;
 using LethalBots.Enums;
 using LethalBots.Managers;
 using LethalBots.Patches.GameEnginePatches;
+using LethalBots.Utils.Helpers;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -21,11 +22,11 @@ namespace LethalBots.AI.AIStates
     public class PanikState : AIState
     {
         private float findEntranceTimer;
-        internal float calmDownTimer;
+        private float calmDownTimer;
         private float breakLOSTimer;
-        internal const float declareJesterCooldownTime = 30f;
-        internal float lastDeclaredJesterTimer;
-        internal bool wasFleeingJester;
+        private const float declareJesterCooldownTime = 30f;
+        private float lastDeclaredJesterTimer;
+        private bool wasFleeingJester;
         private Vector3? _retreatPos = null;
         private Vector3? RetreatPos
         {
@@ -45,12 +46,6 @@ namespace LethalBots.AI.AIStates
         }
 
         /// <summary>
-        /// Lets me read and set the current enemy for this state.<br/>
-        /// Needed so the chat command works properly.
-        /// </summary>
-        public EnemyAI? CurrentEnemy { internal set => currentEnemy = value; get => currentEnemy; }
-
-        /// <summary>
         /// Constructor for PanikState
         /// </summary>
         /// <param name="oldState"></param>
@@ -60,27 +55,27 @@ namespace LethalBots.AI.AIStates
             CurrentState = EnumAIStates.Panik;
 
             Plugin.LogDebug($"{npcController.Npc.playerUsername} enemy seen {enemyAI.enemyType.enemyName}");
-            this.currentEnemy = enemyAI;
+            this.CurrentEnemy = enemyAI;
         }
 
         public override void OnEnterState()
         {
             if (!hasBeenStarted)
             {
-                if (this.currentEnemy == null 
-                    || this.currentEnemy.isEnemyDead)
+                if (this.CurrentEnemy == null 
+                    || this.CurrentEnemy.isEnemyDead)
                 {
-                    Plugin.LogWarning("PanikState: currentEnemy is null or dead, cannot start panik state!");
+                    Plugin.LogWarning("PanikState: CurrentEnemy is null or dead, cannot start panik state!");
                     ChangeBackToPreviousState();
                     return;
                 }
-                float? fearRange = ai.GetFearRangeForEnemies(this.currentEnemy);
+                float? fearRange = ai.GetFearRangeForEnemies(this.CurrentEnemy);
                 if (fearRange.HasValue)
                 {
                     // Why run when we can fight back!
-                    if (ai.HasCombatWeapon() && ai.CanEnemyBeKilled(this.currentEnemy))
+                    if (ai.HasCombatWeapon() && ai.CanEnemyBeKilled(this.CurrentEnemy))
                     {
-                        ai.State = new FightEnemyState(this, this.currentEnemy, this.previousAIState);
+                        ai.State = new FightEnemyState(this, this.CurrentEnemy, this.previousAIState);
                         return;
                     }
 
@@ -89,12 +84,12 @@ namespace LethalBots.AI.AIStates
 
                     // Make us back away at first until the panik coroutine can find a safe path.
                     const float fallbackDistance = 20f;
-                    Ray ray = new Ray(npcController.Npc.transform.position, npcController.Npc.transform.position + Vector3.up * 0.2f - this.currentEnemy.transform.position + Vector3.up * 0.2f);
+                    Ray ray = new Ray(npcController.Npc.transform.position, npcController.Npc.transform.position + Vector3.up * 0.2f - this.CurrentEnemy.transform.position + Vector3.up * 0.2f);
                     ray.direction = new Vector3(ray.direction.x, 0f, ray.direction.z);
                     Vector3 pos = (!Physics.Raycast(ray, out RaycastHit hit, fallbackDistance, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore)) ? ray.GetPoint(fallbackDistance) : hit.point;
                     RetreatPos = pos;
-                    StartPanikCoroutine(this.currentEnemy, fearRange.Value);
-                    if (this.currentEnemy is JesterAI)
+                    StartPanikCoroutine(this.CurrentEnemy, fearRange.Value);
+                    if (this.CurrentEnemy is JesterAI)
                     {
                         wasFleeingJester = true;
                         if ((Time.timeSinceLevelLoad - lastDeclaredJesterTimer) > declareJesterCooldownTime)
@@ -118,12 +113,12 @@ namespace LethalBots.AI.AIStates
         /// </summary>
         public override void DoAI()
         {
-            if (currentEnemy == null || currentEnemy.isEnemyDead)
+            if (CurrentEnemy == null || CurrentEnemy.isEnemyDead)
             {
                 if (wasFleeingJester)
                 {
-                    this.currentEnemy = FindNearbyJester();
-                    if (this.currentEnemy != null && !this.currentEnemy.isEnemyDead)
+                    this.CurrentEnemy = FindNearbyJester();
+                    if (this.CurrentEnemy != null && !this.CurrentEnemy.isEnemyDead)
                     {
                         return;
                     }
@@ -132,12 +127,12 @@ namespace LethalBots.AI.AIStates
                 return;
             }
 
-            float? fearRange = ai.GetFearRangeForEnemies(this.currentEnemy);
+            float? fearRange = ai.GetFearRangeForEnemies(this.CurrentEnemy);
             if (!fearRange.HasValue)
             {
                 if (wasFleeingJester)
                 {
-                    this.currentEnemy = FindNearbyJester();
+                    this.CurrentEnemy = FindNearbyJester();
                     return;
                 }
                 ChangeBackToPreviousState();
@@ -146,16 +141,16 @@ namespace LethalBots.AI.AIStates
 
             // Check if another enemy is closer
             EnemyAI? newEnemyAI = ai.CheckLOSForEnemy(Const.LETHAL_BOT_FOV, Const.LETHAL_BOT_ENTITIES_RANGE, (int)Const.DISTANCE_CLOSE_ENOUGH_HOR);
-            if (newEnemyAI != null && newEnemyAI != currentEnemy)
+            if (newEnemyAI != null && newEnemyAI != CurrentEnemy)
             {
                 float? newFearRange = ai.GetFearRangeForEnemies(newEnemyAI);
                 if (newFearRange.HasValue)
                 {
-                    this.currentEnemy = newEnemyAI;
+                    this.CurrentEnemy = newEnemyAI;
                     fearRange = newFearRange.Value;
                     calmDownTimer = 0f;
-                    RestartPanikCoroutine(this.currentEnemy, fearRange.Value);
-                    if (this.currentEnemy is JesterAI)
+                    RestartPanikCoroutine(this.CurrentEnemy, fearRange.Value);
+                    if (this.CurrentEnemy is JesterAI)
                     {
                         wasFleeingJester = true;
                         if ((Time.timeSinceLevelLoad - lastDeclaredJesterTimer) > declareJesterCooldownTime)
@@ -169,7 +164,7 @@ namespace LethalBots.AI.AIStates
             }
 
             // Are we waiting for the enemy to leave the entrance?
-            if (calmDownTimer > 0f && !this.currentEnemy.isOutside)
+            if (calmDownTimer > 0f && !this.CurrentEnemy.isOutside)
             {
                 // Check if we should end early!
                 ai.StopMoving();
@@ -212,9 +207,9 @@ namespace LethalBots.AI.AIStates
             }
 
             // Check to see if the bot can see the enemy, or enemy has line of sight to bot
-            float sqrDistanceToEnemy = (npcController.Npc.transform.position - currentEnemy.transform.position).sqrMagnitude;
-            if (this.currentEnemy is not JesterAI &&
-                Physics.Linecast(currentEnemy.transform.position, npcController.Npc.gameplayCamera.transform.position,
+            float sqrDistanceToEnemy = (npcController.Npc.transform.position - CurrentEnemy.transform.position).sqrMagnitude;
+            if (this.CurrentEnemy is not JesterAI &&
+                Physics.Linecast(CurrentEnemy.transform.position, npcController.Npc.gameplayCamera.transform.position,
                                  StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore) 
                 && sqrDistanceToEnemy > Const.DISTANCE_FLEEING_NO_LOS * Const.DISTANCE_FLEEING_NO_LOS)
             {
@@ -225,7 +220,7 @@ namespace LethalBots.AI.AIStates
                     // Don't forget we still need to get out of there!
                     if (wasFleeingJester)
                     {
-                        this.currentEnemy = FindNearbyJester();
+                        this.CurrentEnemy = FindNearbyJester();
                         return;
                     }
                     ChangeBackToPreviousState();
@@ -248,7 +243,7 @@ namespace LethalBots.AI.AIStates
                 // Don't forget we still need to get out of there!
                 if (wasFleeingJester)
                 {
-                    this.currentEnemy = FindNearbyJester();
+                    this.CurrentEnemy = FindNearbyJester();
                     return;
                 }
                 ChangeBackToPreviousState();
@@ -263,19 +258,19 @@ namespace LethalBots.AI.AIStates
                     || (RetreatPos.Value - npcController.Npc.transform.position).sqrMagnitude < Const.DISTANCE_CLOSE_ENOUGH_TO_DESTINATION * Const.DISTANCE_CLOSE_ENOUGH_TO_DESTINATION
                     || !ai.IsValidPathToTarget(RetreatPos.Value, false))
                 {
-                    RestartPanikCoroutine(this.currentEnemy, fearRange.Value);
+                    RestartPanikCoroutine(this.CurrentEnemy, fearRange.Value);
                 }
             }
 
             // Why run when we can fight back!
-            if (ai.HasCombatWeapon() && ai.CanEnemyBeKilled(this.currentEnemy))
+            if (ai.HasCombatWeapon() && ai.CanEnemyBeKilled(this.CurrentEnemy))
             {
-                ai.State = new FightEnemyState(this, this.currentEnemy, this.previousAIState);
+                ai.State = new FightEnemyState(this, this.CurrentEnemy, this.previousAIState);
                 return;
             }
 
             // Check if we are countering an enemy
-            if (CounterEnemy(this.currentEnemy))
+            if (CounterEnemy(this.CurrentEnemy))
             {
                 // Custom logic doesn't want the movement code to run.
                 return;
@@ -326,13 +321,13 @@ namespace LethalBots.AI.AIStates
                         {
                             targetEntrance = null;
                             findEntranceTimer = 0f;
-                            RestartPanikCoroutine(this.currentEnemy, fearRange.Value);
+                            RestartPanikCoroutine(this.CurrentEnemy, fearRange.Value);
                         }
                     }
                 }
                 else if (distSqrFromEntrance < Const.DISTANCE_NEARBY_ENTRANCE * Const.DISTANCE_NEARBY_ENTRANCE 
-                    || this.currentEnemy is JesterAI
-                    || !ai.PathIsIntersectedByLineOfSight(targetEntrance.entrancePoint.position, out _, false, true, this.currentEnemy))
+                    || this.CurrentEnemy is JesterAI
+                    || !ai.PathIsIntersectedByLineOfSight(targetEntrance.entrancePoint.position, out _, false, true, this.CurrentEnemy))
                 {
                     Plugin.LogDebug("Safe path to nearby entrance, setting retreat pos to entrance!");
                     StopPanikCoroutine();
@@ -385,7 +380,7 @@ namespace LethalBots.AI.AIStates
                 CanTalkIfOtherLethalBotTalk = true,
                 WaitForCooldown = false,
                 CutCurrentVoiceStateToTalk = true,
-                CanRepeatVoiceState = this.currentEnemy is not NutcrackerEnemyAI || this.currentEnemy.currentBehaviourStateIndex != 1, // Yeah, its a bit weird for them to keep screaming while standing in place....
+                CanRepeatVoiceState = this.CurrentEnemy is not NutcrackerEnemyAI || this.CurrentEnemy.currentBehaviourStateIndex != 1, // Yeah, its a bit weird for them to keep screaming while standing in place....
 
                 ShouldSync = true,
                 IsLethalBotInside = npcController.Npc.isInsideFactory,
@@ -402,45 +397,85 @@ namespace LethalBots.AI.AIStates
         public override void OnBotStuck()
         {
             base.OnBotStuck();
-            if (this.currentEnemy != null)
+            if (this.CurrentEnemy != null)
             { 
-                RestartPanikCoroutine(this.currentEnemy, ai.GetFearRangeForEnemies(this.currentEnemy) ?? Const.DISTANCE_FLEEING); 
+                RestartPanikCoroutine(this.CurrentEnemy, ai.GetFearRangeForEnemies(this.CurrentEnemy) ?? Const.DISTANCE_FLEEING); 
             }
         }
 
-        // We are fleeing right now, these messages should be queued!
-        public override void OnSignalTranslatorMessageReceived(string message)
+        /// <inheritdoc cref="AIState.RegisterChatCommands"/>
+        public static new void RegisterChatCommands()
         {
-            // Return to the ship when we finish!
-            if (message == "return")
+            // We are paniking right now, ignore default chat commands
+            ChatCommandsManager.RegisterIgnoreDefaultForState<PanikState>();
+
+            // Jester is a special case, we should not panic if we are already panicking!
+            ChatCommandsManager.RegisterCommandForState<PanikState>(new ChatCommand(Const.JESTER_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
             {
-                previousAIState = new ReturnToShipState(this);
-                return;
-            }
-            else if (message == "jester")
-            {
-                // Jester is a special case, we should not panic if we are already panicking!
-                lastDeclaredJesterTimer = Time.timeSinceLevelLoad;
-                if (currentEnemy is JesterAI || ai.isOutside)
+                PanikState panikState = (PanikState)state;
+                if (panikState.CurrentEnemy is JesterAI || lethalBotAI.isOutside)
                 {
-                    return;
+                    return true;
                 }
-                EnemyAI? enemyAI = FindNearbyJester();
+                EnemyAI? enemyAI = panikState.FindNearbyJester();
                 if (enemyAI == null)
                 {
-                    return;
+                    return true;
                 }
-                wasFleeingJester = true;
-                this.currentEnemy = enemyAI;
-                calmDownTimer = 0f;
-                float? fearRange = ai.GetFearRangeForEnemies(this.currentEnemy);
+                panikState.wasFleeingJester = true;
+                panikState.CurrentEnemy = enemyAI;
+                panikState.calmDownTimer = 0f;
+                float? fearRange = lethalBotAI.GetFearRangeForEnemies(panikState.CurrentEnemy);
                 if (fearRange.HasValue)
                 {
-                    RestartPanikCoroutine(this.currentEnemy, fearRange.Value);
-                    return;
+                    panikState.RestartPanikCoroutine(panikState.CurrentEnemy, fearRange.Value);
+                    if ((Time.timeSinceLevelLoad - panikState.lastDeclaredJesterTimer) > declareJesterCooldownTime)
+                    {
+                        panikState.lastDeclaredJesterTimer = Time.timeSinceLevelLoad;
+                        lethalBotAI.SendChatMessage("JESTER!!! RUN!!!", true);
+                    }
                 }
-            }
-            base.OnSignalTranslatorMessageReceived(message);
+                return true;
+            }));
+        }
+
+        /// <inheritdoc cref="AIState.RegisterSignalTranslatorCommands"/>
+        public static new void RegisterSignalTranslatorCommands()
+        {
+            // We are fleeing right now, these messages should be queued!
+            ChatCommandsManager.RegisterCommandForState<PanikState>(new ChatCommand(Const.RETURN_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
+            {
+                // Return to the ship when we finish running away!
+                PanikState panikState = (PanikState)state;
+                panikState.previousAIState = new ReturnToShipState(state);
+                return true;
+            }));
+
+            ChatCommandsManager.RegisterCommandForState<PanikState>(new ChatCommand(Const.JESTER_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
+            {
+                // Jester is a special case, we should not panic if we are already panicking!
+                PanikState panikState = (PanikState)state;
+                panikState.lastDeclaredJesterTimer = Time.timeSinceLevelLoad;
+                if (panikState.CurrentEnemy is JesterAI || lethalBotAI.isOutside)
+                {
+                    return true;
+                }
+                EnemyAI? enemyAI = panikState.FindNearbyJester();
+                if (enemyAI == null)
+                {
+                    return true;
+                }
+                panikState.wasFleeingJester = true;
+                panikState.CurrentEnemy = enemyAI;
+                panikState.calmDownTimer = 0f;
+                float? fearRange = lethalBotAI.GetFearRangeForEnemies(panikState.CurrentEnemy);
+                if (fearRange.HasValue)
+                {
+                    panikState.RestartPanikCoroutine(panikState.CurrentEnemy, fearRange.Value);
+                    return true;
+                }
+                return true;
+            }));
         }
 
         public override bool? ShouldBotCrouch()
@@ -474,22 +509,22 @@ namespace LethalBots.AI.AIStates
         /// Helper function that was made to make it easier for bots to counter enemies
         /// </summary>
         /// <remarks>
-        /// <paramref name="currentEnemy"/> only exists to allow other modders the ability to add custom logic for their enemies!
+        /// <paramref name="CurrentEnemy"/> only exists to allow other modders the ability to add custom logic for their enemies!
         /// </remarks>
-        /// <param name="currentEnemy"></param>
+        /// <param name="CurrentEnemy"></param>
         /// <returns><see langword="true"/> if we should skip movement logic; otherwise <see langword="false"/></returns>
-        private bool CounterEnemy(EnemyAI currentEnemy)
+        private bool CounterEnemy(EnemyAI CurrentEnemy)
         {
             // Look at the enemy if they are a coil head!
-            if (currentEnemy is SpringManAI || currentEnemy is FlowermanAI)
+            if (CurrentEnemy is SpringManAI || CurrentEnemy is FlowermanAI)
             {
-                npcController.OrderToLookAtPosition(currentEnemy.eye.position, EnumLookAtPriority.HIGH_PRIORITY, ai.AIIntervalTime);
+                npcController.OrderToLookAtPosition(CurrentEnemy.eye.position, EnumLookAtPriority.HIGH_PRIORITY, ai.AIIntervalTime);
             }
             // Ok, there are three state indexes for nutcrackers to date!
             // 0. Patroling
             // 1. Scanning
             // 2. Hunting/Attacking
-            else if (currentEnemy is NutcrackerEnemyAI && currentEnemy.currentBehaviourStateIndex == 1)
+            else if (CurrentEnemy is NutcrackerEnemyAI && CurrentEnemy.currentBehaviourStateIndex == 1)
             {
                 ai.StopMoving(); // Stand still, if we move, the nutcracker will see us!
                 return true;
@@ -808,7 +843,7 @@ namespace LethalBots.AI.AIStates
             // We somehow failed to find a place to run to, pick again next AI think!
             Plugin.LogDebug($"Failed to find a node to run to for {npcController.Npc.playerUsername}!");
             yield return new WaitForEndOfFrame();
-            if (currentEnemy != null)
+            if (CurrentEnemy != null)
             {
                 RetreatPos = null;
                 panikCoroutine = null;
@@ -864,15 +899,15 @@ namespace LethalBots.AI.AIStates
             return base.FindClosestEntrance(shipPos, entrancesToAvoid);
         }
 
-        private void StartPanikCoroutine(EnemyAI currentEnemy, float fearRange)
+        private void StartPanikCoroutine(EnemyAI CurrentEnemy, float fearRange)
         {
-            panikCoroutine = ai.StartCoroutine(ChooseFleeingNodeFromPosition(currentEnemy, fearRange));
+            panikCoroutine = ai.StartCoroutine(ChooseFleeingNodeFromPosition(CurrentEnemy, fearRange));
         }
 
-        internal void RestartPanikCoroutine(EnemyAI currentEnemy, float fearRange)
+        private void RestartPanikCoroutine(EnemyAI CurrentEnemy, float fearRange)
         {
             StopPanikCoroutine();
-            StartPanikCoroutine(currentEnemy, fearRange);
+            StartPanikCoroutine(CurrentEnemy, fearRange);
         }
 
         private void StopPanikCoroutine()

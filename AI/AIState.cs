@@ -4,6 +4,7 @@ using LethalBots.Constants;
 using LethalBots.Enums;
 using LethalBots.Managers;
 using LethalBots.Patches.EnemiesPatches;
+using LethalBots.Utils.Helpers;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -13,6 +14,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
+using static UnityEngine.InputSystem.InputRemoting;
 using Random = UnityEngine.Random;
 
 namespace LethalBots.AI
@@ -42,6 +44,11 @@ namespace LethalBots.AI
         }
 
         /// <summary>
+        /// Lets other states and chat commands read this normally protected value.
+        /// </summary>
+        public EnemyAI? CurrentEnemy { protected set; get; }
+
+        /// <summary>
         /// <c>NpcController</c> from the <c>LethalBotAI</c>
         /// </summary>
         protected NpcController npcController;
@@ -57,7 +64,6 @@ namespace LethalBots.AI
         protected Coroutine? panikCoroutine;
         protected Coroutine? safePathCoroutine;
         protected Coroutine? lookingAroundCoroutine;
-        protected EnemyAI? currentEnemy;
         protected Vector3 safePathPos; // The closest point to targetShipPos that is safe
         protected CancellationTokenSource? pathfindCancellationToken = null; // For use in the async danger pathfinder
         protected EntranceTeleport? targetEntrance = null;
@@ -77,7 +83,7 @@ namespace LethalBots.AI
             this.TargetItem = oldState.TargetItem;
 
             this.panikCoroutine = oldState.panikCoroutine;
-            this.currentEnemy = oldState.currentEnemy;
+            this.CurrentEnemy = oldState.CurrentEnemy;
 
         }
 
@@ -208,48 +214,90 @@ namespace LethalBots.AI
         }
 
         /// <summary>
-        /// Called when the bot recevies a message from the signal translator!
+        /// Sets up the default chat commands for this state.
         /// </summary>
         /// <remarks>
-        /// WARNING: All messages are forced into lower case!
+        /// This should be called in <see cref="LethalBotManager.RegisterDefaultCommands"/> 
+        /// and <see cref="LethalBotManager.RegisterCustomCommands"/>
         /// </remarks>
-        /// <param name="message"></param>
-        public virtual void OnSignalTranslatorMessageReceived(string message)
+        public static void RegisterChatCommands()
         {
-            if (message == "return")
+            // If we were told about an active Jester, better get the hell out of there!
+            ChatCommandsManager.RegisterGlobalCommand(new ChatCommand(Const.JESTER_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
             {
-                ai.State = new ReturnToShipState(this);
-            }
-            else if (message == "jester")
-            {
-                if (ai.isOutside)
+                if (lethalBotAI.isOutside)
                 {
-                    return;
+                    return false;
                 }
-                EnemyAI? enemyAI = FindNearbyJester();
+                EnemyAI? enemyAI = state.FindNearbyJester();
                 if (enemyAI == null)
                 {
-                    return;
+                    return false;
                 }
-                ai.State = new PanikState(this, enemyAI);
-            }
+                lethalBotAI.State = new PanikState(state, enemyAI);
+                return true;
+            }));
+
+            // One of us was asked to be the mission controller!
+            // NOTE: playerWhoSentMessage should never be null here, but other modders could call this function directly with a null value!
+            ChatCommandsManager.RegisterGlobalCommand(new ChatCommand(Const.MAN_THE_SHIP_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
+            {
+                if (state.IsBotBeingAddressed(playerWhoSentMessage, out var lethalBotController))
+                {
+                    // Yay, we found a vaild bot, make it the mission controller!
+                    lethalBotAI.SendChatMessage("Alright, I'll head to the terminal and watch over the crew!");
+                    LethalBotManager.Instance.MissionControlPlayer = lethalBotController;
+                    lethalBotAI.State = new MissionControlState(state); // Its fine to set the state here directly, if we are not on the ship, the state will handle moving to the ship!
+                }
+                return true;
+            }));
+
+            // One of us was asked to transfer loot!
+            ChatCommandsManager.RegisterGlobalCommand(new ChatCommand(Const.TRANSFER_LOOT_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
+            {
+                if (state.IsBotBeingAddressed(playerWhoSentMessage, out var lethalBotController))
+                {
+                    // Yay, we found a vaild bot, make it transfer loot!
+                    lethalBotAI.SendChatMessage("I'll start transferring loot to the ship right away!");
+                    if (!LethalBotManager.Instance.LootTransferPlayers.Contains(lethalBotController))
+                    {
+                        LethalBotManager.Instance.AddPlayerToLootTransferListAndSync(lethalBotController);
+                    }
+                    lethalBotAI.State = new TransferLootState(state);
+                }
+                return true;
+            }));
         }
 
         /// <summary>
-        /// Called when the bot receives a chat message. This can be from a player or bot!
-        /// You can use <see cref="Managers.LethalBotManager.IsPlayerLethalBot(PlayerControllerB)"/> to check who is a bot or not!
+        /// Sets up the default signal translator commands for this state.
         /// </summary>
         /// <remarks>
-        /// WARNING: All messages are forced into lower case!<br/>
-        /// NOTE: This is not called for messages sent by the bot itself!<br/>
-        /// NOTE: This calls <see cref="ChatCommandsManager.OnPlayerChatMessageReceived(AIState, string, PlayerControllerB, bool)"/> internally!
+        /// This should be called in <see cref="LethalBotManager.RegisterDefaultCommands"/> 
+        /// and <see cref="LethalBotManager.RegisterCustomCommands"/>
         /// </remarks>
-        /// <param name="message">The message we received</param>
-        /// <param name="playerWhoSentMessage">The player who sent the message!</param>
-        /// <param name="isVoice">Was the message spoken or was typed out in the chat?</param>
-        public void OnPlayerChatMessageReceived(string message, PlayerControllerB playerWhoSentMessage, bool isVoice) 
+        public static void RegisterSignalTranslatorCommands()
         {
-            ChatCommandsManager.OnPlayerChatMessageReceived(this, message, playerWhoSentMessage, isVoice);
+            SignalTranslatorCommandsManager.RegisterGlobalCommand(new SignalTranslatorCommand(Const.RETURN_COMMAND, (state, lethalBotAI, message) => 
+            {
+                lethalBotAI.State = new ReturnToShipState(state);
+                return true;
+            }));
+
+            SignalTranslatorCommandsManager.RegisterGlobalCommand(new SignalTranslatorCommand(Const.JESTER_COMMAND, (state, lethalBotAI, message) =>
+            {
+                if (lethalBotAI.isOutside)
+                {
+                    return true;
+                }
+                EnemyAI? enemyAI = state.FindNearbyJester();
+                if (enemyAI == null)
+                {
+                    return true;
+                }
+                lethalBotAI.State = new PanikState(state, enemyAI);
+                return true;
+            }));
         }
 
         /// <summary>
@@ -1450,7 +1498,7 @@ namespace LethalBots.AI
         /// Helper function to find an active jester.
         /// </summary>
         /// <returns>The found jester or null</returns>
-        internal EnemyAI? FindNearbyJester()
+        protected EnemyAI? FindNearbyJester()
         {
             RoundManager instanceRM = RoundManager.Instance;
             foreach (EnemyAI enemy in instanceRM.SpawnedEnemies)

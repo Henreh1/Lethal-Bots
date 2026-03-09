@@ -74,7 +74,9 @@ namespace LethalBots.Managers
         /// <returns><see langword="true"/> if the <paramref name="state"/> responded to the signal translator command; otherwise <see langword="false"/></returns>
         public static bool OnSignalTranslatorMessageReceived(AIState state, string message)
         {
+            // Grab type and AI
             Type stateType = state.GetType();
+            LethalBotAI lethalBotAI = state.ai;
 
             // Check for state specific overrides or custom commands.
             if (stateCommands.TryGetValue(stateType, out var list))
@@ -83,7 +85,7 @@ namespace LethalBots.Managers
                 {
                     if (message.Contains(command.Keyword))
                     {
-                        if (command.Execute(state, message))
+                        if (command.Execute(state, lethalBotAI, message))
                         {
                             return true;
                         }
@@ -91,18 +93,18 @@ namespace LethalBots.Managers
                 }
             }
 
-            // Should we check the default chat commands
+            // Should we check the default commands
             if (ignoreGlobalCommands.Contains(stateType))
             {
                 return false;
             }
 
-            // Check for the default chat commands.
+            // Check for the default signal translator commands.
             foreach (var command in globalCommands)
             {
                 if (message.Contains(command.Keyword))
                 {
-                    if (command.Execute(state, message))
+                    if (command.Execute(state, lethalBotAI, message))
                     {
                         return true;
                     }
