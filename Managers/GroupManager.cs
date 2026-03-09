@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Text.RegularExpressions;
 using Unity.Netcode;
+using UnityEngine;
 
 namespace LethalBots.Managers
 {
@@ -141,7 +142,7 @@ namespace LethalBots.Managers
         /// <param name="member"></param>
         private void AddToGroup(int groupId, PlayerControllerB member)
         {
-            if (!IsServer)
+            if (!IsServer || !DoesGroupExist(groupId))
                 return;
 
             RemoveFromCurrentGroup(member);
@@ -179,6 +180,7 @@ namespace LethalBots.Managers
         /// </summary>
         /// <param name="groupId"></param>
         /// <param name="player"></param>
+        [ServerRpc(RequireOwnership = false)]
         private void AddToGroupServerRpc(int groupId, NetworkBehaviourReference player)
         {
             if (player.TryGet(out PlayerControllerB groupLeader))
@@ -211,7 +213,7 @@ namespace LethalBots.Managers
         }
 
         /// <summary>
-        /// <inheritdoc cref="AddToGroup(int, PlayerControllerB)"/>
+        /// <inheritdoc cref="RemoveFromCurrentGroup(PlayerControllerB)"/>
         /// </summary>
         /// <remarks>
         /// This will automatically call <see cref="RemoveFromCurrentGroupServerRpc(NetworkBehaviourReference)"/> if called on a client.
@@ -233,6 +235,7 @@ namespace LethalBots.Managers
         /// Helper rpc that allows clients to remove themselves from groups
         /// </summary>
         /// <param name="player"></param>
+        [ServerRpc(RequireOwnership = false)]
         private void RemoveFromCurrentGroupServerRpc(NetworkBehaviourReference player)
         {
             if (player.TryGet(out PlayerControllerB groupLeader))
@@ -398,6 +401,116 @@ namespace LethalBots.Managers
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Returns the closest group member to <paramref name="player"/>.
+        /// </summary>
+        /// <param name="player"></param>
+        /// <param name="playerGroupId"></param>
+        /// <returns>The closest group member or <see langword="null"/>, if <paramref name="player"/> is the only member in the group</returns>
+        public PlayerControllerB? GetClosestGroupMember(PlayerControllerB player, int? playerGroupId = null)
+        {
+            int groupId = playerGroupId ?? GetGroupId(player);
+            if (groupId == INVALID_GROUP_INDEX || GetGroupSize(groupId) <= 1)
+                return null;
+
+            var members = GetGroupMembers(groupId);
+            Vector3 playerPos = player.transform.position;
+            PlayerControllerB? closest = null;
+            float closestDistSqr = float.MaxValue;
+            foreach (var member in members)
+            {
+                if (member == player)
+                    continue;
+
+                float dist = (member.transform.position - playerPos).sqrMagnitude;
+                if (dist < closestDistSqr)
+                {
+                    closestDistSqr = dist;
+                    closest = member;
+                }
+            }
+
+            return closest;
+        }
+
+        /// <summary>
+        /// <inheritdoc cref="GetGroupCenter(int)"/>
+        /// </summary>
+        /// <param name="player"></param>
+        /// <param name="groupId"></param>
+        /// <returns><inheritdoc cref="GetGroupCenter(int)"/></returns>
+        public Vector3 GetGroupCenter(PlayerControllerB player, int? groupId = null)
+        {
+            int id = groupId ?? GetGroupId(player);
+            if (id == INVALID_GROUP_INDEX)
+                return player.transform.position;
+
+            return GetGroupCenter(id);
+        }
+
+        /// <summary>
+        /// Returns the center position of the given group.
+        /// </summary>
+        /// <param name="groupId"></param>
+        /// <returns>
+        /// The average position of all members in the group.<br/>
+        /// Returns <see cref="Vector3.zero"/> if the group does not exist.
+        /// </returns>
+        public Vector3 GetGroupCenter(int groupId)
+        {
+            if (!groupMembers.TryGetValue(groupId, out var members) || members.Count == 0)
+                return Vector3.zero;
+
+            Vector3 sum = Vector3.zero;
+            int count = 0;
+            var spawnedObjects = NetworkManager.SpawnManager.SpawnedObjects;
+            foreach (ulong id in members)
+            {
+                if (spawnedObjects.TryGetValue(id, out var obj) 
+                    && obj.TryGetComponent(out PlayerControllerB member))
+                {
+                    sum += member.transform.position;
+                    count++;
+                }
+            }
+
+            return count > 0 ? sum / count : Vector3.zero;
+        }
+
+        /// <summary>
+        /// Returns the furthest member from the group.
+        /// </summary>
+        /// <remarks>
+        /// This is a great way to find stragglers in the group.
+        /// </remarks>
+        /// <param name="groupId"></param>
+        /// <returns>The furthest <see cref="PlayerControllerB"/> that is in our given group.</returns>
+        public PlayerControllerB? GetFurthestMemberFromCenter(int groupId)
+        {
+            if (!groupMembers.TryGetValue(groupId, out var members) || members.Count <= 1)
+                return null;
+
+            Vector3 center = GetGroupCenter(groupId);
+            PlayerControllerB? furthest = null;
+            float furthestDistSqr = 0f;
+            var spawnedObjects = NetworkManager.SpawnManager.SpawnedObjects;
+            foreach (ulong id in members)
+            {
+                if (spawnedObjects.TryGetValue(id, out var obj) &&
+                    obj.TryGetComponent(out PlayerControllerB member))
+                {
+                    float dist = (member.transform.position - center).sqrMagnitude;
+                    if (dist > furthestDistSqr)
+                    {
+                        furthestDistSqr = dist;
+                        furthest = member;
+                    }
+                }
+            }
+
+            return furthest;
         }
 
         /// <summary>

@@ -38,16 +38,16 @@ namespace LethalBots.AI.AIStates
         private bool canCollectPurchasedItems; // Used to keep the bot from heading over to collect what is purchased when we are in the middle of ordering stuff.
         private bool grabbedLoadout; // Used to make the bot grab its loadout before heading on the terminal
         private bool botClosedShipDoors; // Used so the bot doesn't mess with the doors when the player touches them
-        private bool playerRequestLeave; // This is used when a human player requests the bot to pull the ship lever!
-        private bool playerRequestedTerminal; // This is used when a human player requests to use the terminal!
-        private float waitForTerminalTime; // This is used to wait for the terminal to be free
+        internal bool playerRequestLeave; // This is used when a human player requests the bot to pull the ship lever!
+        internal bool playerRequestedTerminal; // This is used when a human player requests to use the terminal!
+        internal float waitForTerminalTime; // This is used to wait for the terminal to be free
         private bool targetPlayerUpdated; // This tells the signal translator coroutine the targeted player has updated!
         private WalkieTalkie? walkieTalkie; // This is the walkie-talkie we want to have in our inventory
         private GrabbableObject? weapon; // This is the weapon we want to have in our inventory
         private GrabbableObject? bodyToCollect; // This is the dead body the bot wants to pickup so it gets properly registered as on the ship!
         private PlayerControllerB? targetedPlayer; // This is the current player on the monitor based on last vision update
-        private PlayerControllerB? monitoredPlayer; // This is the player we want to be monitoring
-        private Queue<PlayerControllerB> playersRequstedTeleport = new Queue<PlayerControllerB>();
+        internal PlayerControllerB? monitoredPlayer; // This is the player we want to be monitoring
+        internal Queue<PlayerControllerB> playersRequstedTeleport = new Queue<PlayerControllerB>();
         private Coroutine? monitorCrew;
         private Coroutine? useSignalTranslator;
         private Coroutine? restockShip;
@@ -907,7 +907,7 @@ namespace LethalBots.AI.AIStates
         /// This queues a message to be sent by the bot using the signal translator!
         /// </summary>
         /// <param name="message"></param>
-        private void SendMessageUsingSignalTranslator(string message, MessagePriority priority = MessagePriority.Low)
+        public void SendMessageUsingSignalTranslator(string message, MessagePriority priority = MessagePriority.Low)
         {
             if (!string.IsNullOrWhiteSpace(message))
             {
@@ -1875,84 +1875,6 @@ namespace LethalBots.AI.AIStates
                     IsLethalBotInside = npcController.Npc.isInsideFactory,
                     AllowSwearing = Plugin.Config.AllowSwearing.Value
                 });
-            }
-        }
-
-        // Allow players to request specific monitoring from the bot
-        public override void OnPlayerChatMessageReceived(string message, PlayerControllerB playerWhoSentMessage, bool isVoice)
-        {
-            if (playerWhoSentMessage != null)
-            {
-                if (message.Contains("start the ship"))
-                {
-                    // Now we need to do some safety checks first. Only the host can tell the bot to pull the lever.
-                    // Unless they are dead!
-                    PlayerControllerB? hostPlayer = LethalBotManager.HostPlayerScript;
-                    if (hostPlayer == null
-                        || hostPlayer == playerWhoSentMessage
-                        || hostPlayer.isPlayerDead 
-                        || !Plugin.Config.StartShipChatCommandProtection.Value)
-                    {
-                        if (LethalBotManager.AreWeAtTheCompanyBuilding())
-                        {
-                            ai.SendChatMessage($"Affirmative, I will start the ship in {Const.LETHAL_BOT_TIMER_LEAVE_PLANET} seconds and once everyone is onboard.");
-                        }
-                        else
-                        { 
-                            ai.SendChatMessage($"Affirmative, I will start the ship in {Const.LETHAL_BOT_TIMER_LEAVE_PLANET} seconds."); 
-                        }
-                        playerRequestLeave = true;
-                    }
-                    else
-                    {
-                        ai.SendChatMessage($"Sorry {playerWhoSentMessage.playerUsername}, but only the captain can tell me to start the ship!");
-                    }
-                }
-                // A player is requesting we monitor them
-                else if (message.Contains("request monitoring"))
-                {
-                    ai.SendChatMessage($"Roger, I will only monitor you, {playerWhoSentMessage.playerUsername}.");
-                    monitoredPlayer = playerWhoSentMessage;
-                }
-                // The player wants to stop being monitored
-                else if (monitoredPlayer == playerWhoSentMessage && message.Contains("clear monitoring"))
-                {
-                    ai.SendChatMessage("Understood, I will resume monitoring all crew members.");
-                    monitoredPlayer = null;
-                }
-                // This player wants to be teleported back to the ship
-                else if (message.Contains("request teleport"))
-                {
-                    // Only add new requests!
-                    if (!playersRequstedTeleport.Contains(playerWhoSentMessage))
-                    { 
-                        ai.SendChatMessage("Hold on, I will teleport you back to the ship as soon as possible.");
-                        playersRequstedTeleport.Enqueue(playerWhoSentMessage); 
-                    }
-                }
-                // A player is asking us to get off the terminal,
-                // probably so they can use it.
-                else if (message.Contains("hop off the terminal"))
-                {
-                    if (!playerRequestedTerminal)
-                    { 
-                        ai.SendChatMessage("Understood, I am leaving the terminal now."); 
-                    }
-                    playerRequestedTerminal = true;
-                    waitForTerminalTime = 0f;
-                }
-                // A player is asking us to transmit a message
-                else if (message.Contains(Const.TRANSMIT_KEYWORD))
-                {
-                    // First we need to extract the message!
-                    // FIXME: There has to be a better way to do this!
-                    int transmitIndex = message.IndexOf(Const.TRANSMIT_KEYWORD) + Const.TRANSMIT_KEYWORD_LENGTH;
-                    string messageToTransmit = message.Substring(transmitIndex).Trim();
-                    ai.SendChatMessage($"Alright, I will relay, {messageToTransmit} to the rest of the crew.");
-
-                    // Queue the message to be sent!
-                    SendMessageUsingSignalTranslator(messageToTransmit, MessagePriority.High);
-                }
             }
         }
 

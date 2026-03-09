@@ -22,7 +22,7 @@ namespace LethalBots.AI
     /// </summary>
     public abstract class AIState
     {
-        protected LethalBotAI ai;
+        public LethalBotAI ai { protected set; get; }
 
         protected AIState? previousAIState;
         public EnumAIStates? previousState { protected set; get; }
@@ -241,54 +241,15 @@ namespace LethalBots.AI
         /// </summary>
         /// <remarks>
         /// WARNING: All messages are forced into lower case!<br/>
-        /// NOTE: This is not called for messages sent by the bot itself!
+        /// NOTE: This is not called for messages sent by the bot itself!<br/>
+        /// NOTE: This calls <see cref="ChatCommandsManager.OnPlayerChatMessageReceived(AIState, string, PlayerControllerB, bool)"/> internally!
         /// </remarks>
         /// <param name="message">The message we received</param>
         /// <param name="playerWhoSentMessage">The player who sent the message!</param>
         /// <param name="isVoice">Was the message spoken or was typed out in the chat?</param>
-        public virtual void OnPlayerChatMessageReceived(string message, PlayerControllerB playerWhoSentMessage, bool isVoice) 
+        public void OnPlayerChatMessageReceived(string message, PlayerControllerB playerWhoSentMessage, bool isVoice) 
         {
-            if (message.Contains("jester"))
-            {
-                if (ai.isOutside)
-                {
-                    return;
-                }
-                EnemyAI? enemyAI = FindNearbyJester();
-                if (enemyAI == null)
-                {
-                    return;
-                }
-                ai.State = new PanikState(this, enemyAI);
-            }
-            // One of us was asked to be the mission controller!
-            // NOTE: playerWhoSentMessage should never be null here, but other modders could call this function directly with a null value!
-            else if (message.Contains("man the ship"))
-            {
-                if (IsBotBeingAddressed(playerWhoSentMessage, out var lethalBotController))
-                {
-                    // Yay, we found a vaild bot, make it the mission controller!
-                    ai.SendChatMessage("Alright, I'll head to the terminal and watch over the crew!");
-                    LethalBotManager.Instance.MissionControlPlayer = lethalBotController;
-                    ai.State = new MissionControlState(this); // Its fine to set the state here directly, if we are not on the ship, the state will handle moving to the ship!
-                }
-                return;
-            }
-            // One of us was asked to transfer loot!
-            else if (message.Contains("transfer loot"))
-            {
-                if (IsBotBeingAddressed(playerWhoSentMessage, out var lethalBotController))
-                {
-                    // Yay, we found a vaild bot, make it transfer loot!
-                    ai.SendChatMessage("I'll start transferring loot to the ship right away!");
-                    if (!LethalBotManager.Instance.LootTransferPlayers.Contains(lethalBotController))
-                    {
-                        LethalBotManager.Instance.AddPlayerToLootTransferListAndSync(lethalBotController);
-                    }
-                    ai.State = new TransferLootState(this);
-                }
-                return;
-            }
+            ChatCommandsManager.OnPlayerChatMessageReceived(this, message, playerWhoSentMessage, isVoice);
         }
 
         /// <summary>
@@ -301,7 +262,7 @@ namespace LethalBots.AI
         /// </remarks>
         /// <param name="player">The player to check for bot interaction. Cannot be null.</param>
         /// <returns>true if the player is addressing this bot and the bot is eligible to respond; otherwise, false.</returns>
-        protected bool IsBotBeingAddressed(PlayerControllerB player, out PlayerControllerB? lethalBotController)
+        public bool IsBotBeingAddressed(PlayerControllerB player, out PlayerControllerB? lethalBotController)
         {
             // Make sure the player is valid
             lethalBotController = null;
@@ -709,8 +670,6 @@ namespace LethalBots.AI
             {
                 // TODO: Change this to be better with longer day mods.
                 // I mean it works partially, but could be better!
-                //DayMode dayMode = timeOfDay.GetDayPhase(timeOfDay.currentDayTime / timeOfDay.totalTime);
-                //(dayMode == DayMode.Sundown || dayMode == DayMode.Midnight)
                 if (timeOfDay.normalizedTimeOfDay > Plugin.Config.ReturnToShipTime
                     || timeOfDay.votesForShipToLeaveEarly >= LethalBotManager.Instance.AllRealPlayersCount 
                     || timeOfDay.shipLeavingAlertCalled)
@@ -1491,7 +1450,7 @@ namespace LethalBots.AI
         /// Helper function to find an active jester.
         /// </summary>
         /// <returns>The found jester or null</returns>
-        protected EnemyAI? FindNearbyJester()
+        internal EnemyAI? FindNearbyJester()
         {
             RoundManager instanceRM = RoundManager.Instance;
             foreach (EnemyAI enemy in instanceRM.SpawnedEnemies)

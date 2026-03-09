@@ -113,11 +113,5 @@ namespace LethalBots.AI.AIStates
         {
             return;
         }
-
-        // We are dead, these messages mean nothing to us!
-        public override void OnPlayerChatMessageReceived(string message, PlayerControllerB playerWhoSentMessage, bool isVoice)
-        {
-            return;
-        }
     }
 }

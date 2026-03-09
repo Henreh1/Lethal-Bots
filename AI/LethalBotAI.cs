@@ -120,7 +120,6 @@ namespace LethalBots.AI
         public float TimeSinceTeleporting = 0f;
 
         public TimedTouchingGroundCheck IsTouchingGroundTimedCheck = null!;
-        public TimedAngleFOVWithLocalPlayerCheck AngleFOVWithLocalPlayerTimedCheck = null!;
 
         private EnumStateControllerMovement StateControllerMovement;
         private static InteractTrigger[] laddersInteractTrigger = null!;
@@ -305,7 +304,6 @@ namespace LethalBots.AI
 
             // Start timed calulation
             IsTouchingGroundTimedCheck = new TimedTouchingGroundCheck();
-            AngleFOVWithLocalPlayerTimedCheck = new TimedAngleFOVWithLocalPlayerCheck();
 
             // Spawn animation
             spawnAnimationCoroutine = BeginLethalBotSpawnAnimation(enumSpawnAnimation);
@@ -631,10 +629,10 @@ namespace LethalBots.AI
             // NEEDTOVALIDATE: I wonder that since bots now properly set their moveInputVector, if this is no longer needed.
             // Lethal Internship used to set it to Vector2(1.0, 0.0) I believe. I changed it to use the direction of the path the bot was following,
             // which fixed the movement animations.
-            if (StateControllerMovement == EnumStateControllerMovement.Free)
-            {
-                return;
-            }
+            //if (StateControllerMovement == EnumStateControllerMovement.Free)
+            //{
+            //    return;
+            //}
 
             // Do stuck detection
             if (NpcController.HasToMove || (agent.isActiveAndEnabled && !agent.isOnNavMesh))
@@ -740,11 +738,7 @@ namespace LethalBots.AI
                 }
             }
 
-            // TODO: Add more to this function!
-            // Essentially what I want to do is make a function that manages equipment the bot is holding.
-            // Such as flashlights, tzp-inhalent, using the stun-gun, flashbangs, etc.
-            // Right now the only equipment the bot uses are walkie-talkies, keys, shovels, knifes, and shotguns.
-            // Adding use of more equipment would be nice and add a more "human" aspect to them!
+            // Use the currently held item
             State.UseHeldItem();
         }
 
@@ -9282,44 +9276,6 @@ namespace LethalBots.AI
                                                out groundHit,
                                                2.5f,
                                                StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore);
-        }
-    }
-
-    public class TimedAngleFOVWithLocalPlayerCheck
-    {
-        private float angle;
-
-        private long timer = 50 * TimeSpan.TicksPerMillisecond;
-        private long lastTimeCalculate;
-
-        public float GetAngleFOVWithLocalPlayer(Transform localPlayerCameraTransform, Vector3 lethalBotBodyPos)
-        {
-            if (!NeedToRecalculate())
-            {
-                return angle;
-            }
-
-            CalculateAngleFOVWithLocalPlayer(localPlayerCameraTransform, lethalBotBodyPos);
-            return angle;
-        }
-
-        private bool NeedToRecalculate()
-        {
-            long elapsedTime = DateTime.Now.Ticks - lastTimeCalculate;
-            if (elapsedTime > timer)
-            {
-                lastTimeCalculate = DateTime.Now.Ticks;
-                return true;
-            }
-            else
-            {
-                return false;
-            }
-        }
-
-        private void CalculateAngleFOVWithLocalPlayer(Transform localPlayerCameraTransform, Vector3 lethalBotBodyPos)
-        {
-            angle = Vector3.Angle(localPlayerCameraTransform.forward, lethalBotBodyPos - localPlayerCameraTransform.position);
         }
     }
 }

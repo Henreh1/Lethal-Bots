@@ -21,11 +21,11 @@ namespace LethalBots.AI.AIStates
     public class PanikState : AIState
     {
         private float findEntranceTimer;
-        private float calmDownTimer;
+        internal float calmDownTimer;
         private float breakLOSTimer;
-        private const float delcareJesterCooldownTime = 30f;
-        private float lastDeclaredJesterTimer;
-        private bool wasFleeingJester;
+        internal const float declareJesterCooldownTime = 30f;
+        internal float lastDeclaredJesterTimer;
+        internal bool wasFleeingJester;
         private Vector3? _retreatPos = null;
         private Vector3? RetreatPos
         {
@@ -43,6 +43,13 @@ namespace LethalBots.AI.AIStates
             }
             get => _retreatPos;
         }
+
+        /// <summary>
+        /// Lets me read and set the current enemy for this state.<br/>
+        /// Needed so the chat command works properly.
+        /// </summary>
+        public EnemyAI? CurrentEnemy { internal set => currentEnemy = value; get => currentEnemy; }
+
         /// <summary>
         /// Constructor for PanikState
         /// </summary>
@@ -90,7 +97,7 @@ namespace LethalBots.AI.AIStates
                     if (this.currentEnemy is JesterAI)
                     {
                         wasFleeingJester = true;
-                        if ((Time.timeSinceLevelLoad - lastDeclaredJesterTimer) > delcareJesterCooldownTime)
+                        if ((Time.timeSinceLevelLoad - lastDeclaredJesterTimer) > declareJesterCooldownTime)
                         {
                             lastDeclaredJesterTimer = Time.timeSinceLevelLoad;
                             ai.SendChatMessage("JESTER!!! RUN!!!", true);
@@ -151,7 +158,7 @@ namespace LethalBots.AI.AIStates
                     if (this.currentEnemy is JesterAI)
                     {
                         wasFleeingJester = true;
-                        if ((Time.timeSinceLevelLoad - lastDeclaredJesterTimer) > delcareJesterCooldownTime)
+                        if ((Time.timeSinceLevelLoad - lastDeclaredJesterTimer) > declareJesterCooldownTime)
                         {
                             lastDeclaredJesterTimer = Time.timeSinceLevelLoad;
                             ai.SendChatMessage("JESTER!!! RUN!!!", true);
@@ -434,37 +441,6 @@ namespace LethalBots.AI.AIStates
                 }
             }
             base.OnSignalTranslatorMessageReceived(message);
-        }
-
-        public override void OnPlayerChatMessageReceived(string message, PlayerControllerB playerWhoSentMessage, bool isVoice)
-        {
-            if (message.Contains("jester"))
-            {
-                // Jester is a special case, we should not panic if we are already panicking!
-                if (currentEnemy is JesterAI || ai.isOutside)
-                {
-                    return;
-                }
-                EnemyAI? enemyAI = FindNearbyJester();
-                if (enemyAI == null)
-                {
-                    return;
-                }
-                wasFleeingJester = true;
-                this.currentEnemy = enemyAI;
-                calmDownTimer = 0f;
-                float? fearRange = ai.GetFearRangeForEnemies(this.currentEnemy);
-                if (fearRange.HasValue)
-                {
-                    RestartPanikCoroutine(this.currentEnemy, fearRange.Value);
-                    if ((Time.timeSinceLevelLoad - lastDeclaredJesterTimer) > delcareJesterCooldownTime)
-                    {
-                        lastDeclaredJesterTimer = Time.timeSinceLevelLoad;
-                        ai.SendChatMessage("JESTER!!! RUN!!!", true);
-                    }
-                }
-                return;
-            }
         }
 
         public override bool? ShouldBotCrouch()
@@ -893,7 +869,7 @@ namespace LethalBots.AI.AIStates
             panikCoroutine = ai.StartCoroutine(ChooseFleeingNodeFromPosition(currentEnemy, fearRange));
         }
 
-        private void RestartPanikCoroutine(EnemyAI currentEnemy, float fearRange)
+        internal void RestartPanikCoroutine(EnemyAI currentEnemy, float fearRange)
         {
             StopPanikCoroutine();
             StartPanikCoroutine(currentEnemy, fearRange);

@@ -9,6 +9,7 @@ using LethalBots.Patches.GameEnginePatches;
 using LethalBots.Patches.MapPatches;
 using LethalBots.Patches.ModPatches.LethalPhones;
 using LethalBots.Patches.NpcPatches;
+using LethalBots.Utils.Helpers;
 using Scoops.customization;
 using Scoops.gameobjects;
 using Scoops.misc;
@@ -21,6 +22,7 @@ using System.Runtime.CompilerServices;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.AI;
+using static UnityEngine.InputSystem.InputRemoting;
 using Object = UnityEngine.Object;
 using Quaternion = UnityEngine.Quaternion;
 using Random = System.Random;
@@ -592,6 +594,10 @@ namespace LethalBots.Managers
             DictionaryLethalBotThreats.Clear();
             RegisterDefaultThreats();
             RegisterCustomThreats();
+
+            // Register chat commands
+            RegisterDefaultChatCommands();
+            RegisterCustomChatCommands();
         }
 
         private void Update()
@@ -1979,6 +1985,257 @@ namespace LethalBots.Managers
                 return;
             }
             LethalBotsRespondToVoiceChat(message, playerWhoSaidMessage);
+        }
+
+        /// <summary>
+        /// Helper function that registers the default chat commands!
+        /// </summary>
+        private static void RegisterDefaultChatCommands()
+        {
+            // ****************************************************************
+            // First things first, the default chat commands for every state!
+            // ****************************************************************
+
+            // Its a good idea to use consts for your chat command names!
+            // TODO: Move these into the const file!
+            const string JESTER_COMMAND = "jester";
+            const string MAN_THE_SHIP_COMMAND = "man the ship";
+            const string TRANSFER_LOOT_COMMAND = "transfer loot";
+            const string GEAR_UP_COMMAND = "gear up";
+            const string START_THE_SHIP_COMMAND = "start the ship";
+            const string REQUEST_MONITORING_COMMAND = "request monitoring";
+            const string CLEAR_MONITORING_COMMAND = "clear monitoring";
+            const string REQUEST_TELEPORT_COMMAND = "request teleport";
+            const string HOP_OFF_THE_TERMINAL_COMMAND = "hop off the terminal";
+
+            // If we were told about an active Jester, better get the hell out of there!
+            ChatCommandsManager.RegisterGlobalCommand(new ChatCommand(JESTER_COMMAND, (state, playerWhoSentMessage, message, isVoice) => 
+            {
+                LethalBotAI lethalBotAI = state.ai;
+                if (lethalBotAI.isOutside)
+                {
+                    return false;
+                }
+                EnemyAI? enemyAI = state.FindNearbyJester();
+                if (enemyAI == null)
+                {
+                    return false;
+                }
+                lethalBotAI.State = new PanikState(state, enemyAI);
+                return true;
+            }));
+
+            // One of us was asked to be the mission controller!
+            // NOTE: playerWhoSentMessage should never be null here, but other modders could call this function directly with a null value!
+            ChatCommandsManager.RegisterGlobalCommand(new ChatCommand(MAN_THE_SHIP_COMMAND, (state, playerWhoSentMessage, message, isVoice) =>
+            {
+                LethalBotAI lethalBotAI = state.ai;
+                if (state.IsBotBeingAddressed(playerWhoSentMessage, out var lethalBotController))
+                {
+                    // Yay, we found a vaild bot, make it the mission controller!
+                    lethalBotAI.SendChatMessage("Alright, I'll head to the terminal and watch over the crew!");
+                    LethalBotManager.Instance.MissionControlPlayer = lethalBotController;
+                    lethalBotAI.State = new MissionControlState(state); // Its fine to set the state here directly, if we are not on the ship, the state will handle moving to the ship!
+                }
+                return true;
+            }));
+
+            // One of us was asked to transfer loot!
+            ChatCommandsManager.RegisterGlobalCommand(new ChatCommand(TRANSFER_LOOT_COMMAND, (state, playerWhoSentMessage, message, isVoice) =>
+            {
+                LethalBotAI lethalBotAI = state.ai;
+                if (state.IsBotBeingAddressed(playerWhoSentMessage, out var lethalBotController))
+                {
+                    // Yay, we found a vaild bot, make it transfer loot!
+                    lethalBotAI.SendChatMessage("I'll start transferring loot to the ship right away!");
+                    if (!LethalBotManager.Instance.LootTransferPlayers.Contains(lethalBotController))
+                    {
+                        LethalBotManager.Instance.AddPlayerToLootTransferListAndSync(lethalBotController);
+                    }
+                    lethalBotAI.State = new TransferLootState(state);
+                }
+                return true;
+            }));
+
+            // ****************************************************************
+            // Now, onto state specific overrides!
+            // ****************************************************************
+
+            // Transfer Loot state
+            ChatCommandsManager.RegisterCommandForState<TransferLootState>(new ChatCommand(TRANSFER_LOOT_COMMAND, (state, playerWhoSentMessage, message, isVoice) =>
+            {
+                return true; // We are already transferring loot, no need to respond to transfer loot messages
+            }));
+
+            // Brain Dead state
+            // We are dead, these messages mean nothing to us!
+            ChatCommandsManager.RegisterIgnoreDefaultForState<BrainDeadState>();
+
+            // Chill With Player state
+            ChatCommandsManager.RegisterCommandForState<ChillWithPlayerState>(new ChatCommand(GEAR_UP_COMMAND, (state, playerWhoSentMessage, message, isVoice) =>
+            {
+                LethalBotAI lethalBotAI = state.ai;
+                lethalBotAI.State = new GrabLoadoutState(state);
+                return true;
+            }));
+
+            // Mission Control state
+            // We don't care about the default commands as the Mission Controller!
+            ChatCommandsManager.RegisterIgnoreDefaultForState<MissionControlState>();
+
+            // Someone requested that we start the ship!
+            ChatCommandsManager.RegisterCommandForState<MissionControlState>(new ChatCommand(START_THE_SHIP_COMMAND, (state, playerWhoSentMessage, message, isVoice) =>
+            {
+                // Make sure the sender is valid!
+                if (playerWhoSentMessage == null)
+                {
+                    return true;
+                }
+
+                // Now we need to do some safety checks first. Only the host can tell the bot to pull the lever.
+                // Unless they are dead!
+                MissionControlState missionControlState = (MissionControlState)state; // We have bigger problems if this cast fails!
+                LethalBotAI lethalBotAI = state.ai;
+                PlayerControllerB? hostPlayer = LethalBotManager.HostPlayerScript;
+                if (hostPlayer == null
+                    || hostPlayer == playerWhoSentMessage
+                    || hostPlayer.isPlayerDead
+                    || !Plugin.Config.StartShipChatCommandProtection.Value)
+                {
+                    if (LethalBotManager.AreWeAtTheCompanyBuilding())
+                    {
+                        lethalBotAI.SendChatMessage($"Affirmative, I will start the ship in {Const.LETHAL_BOT_TIMER_LEAVE_PLANET} seconds and once everyone is onboard.");
+                    }
+                    else
+                    {
+                        lethalBotAI.SendChatMessage($"Affirmative, I will start the ship in {Const.LETHAL_BOT_TIMER_LEAVE_PLANET} seconds.");
+                    }
+                    missionControlState.playerRequestLeave = true;
+                }
+                else
+                {
+                    lethalBotAI.SendChatMessage($"Sorry {playerWhoSentMessage.playerUsername}, but only the captain can tell me to start the ship!");
+                }
+                return true;
+            }));
+
+            // A player is requesting we monitor them
+            ChatCommandsManager.RegisterCommandForState<MissionControlState>(new ChatCommand(REQUEST_MONITORING_COMMAND, (state, playerWhoSentMessage, message, isVoice) =>
+            {
+                MissionControlState missionControlState = (MissionControlState)state; // We have bigger problems if this cast fails!
+                LethalBotAI lethalBotAI = state.ai;
+                lethalBotAI.SendChatMessage($"Roger, I will only monitor you, {playerWhoSentMessage.playerUsername}.");
+                missionControlState.monitoredPlayer = playerWhoSentMessage;
+                return true;
+            }));
+
+            // The player wants to stop being monitored
+            ChatCommandsManager.RegisterCommandForState<MissionControlState>(new ChatCommand(CLEAR_MONITORING_COMMAND, (state, playerWhoSentMessage, message, isVoice) =>
+            {
+                MissionControlState missionControlState = (MissionControlState)state; // We have bigger problems if this cast fails!
+                if (missionControlState.monitoredPlayer != playerWhoSentMessage)
+                {
+                    return true; // Ignore request cancellations from other players!
+                }
+                LethalBotAI lethalBotAI = state.ai;
+                lethalBotAI.SendChatMessage("Understood, I will resume monitoring all crew members.");
+                missionControlState.monitoredPlayer = null;
+                return true;
+            }));
+
+            // This player wants to be teleported back to the ship
+            ChatCommandsManager.RegisterCommandForState<MissionControlState>(new ChatCommand(REQUEST_TELEPORT_COMMAND, (state, playerWhoSentMessage, message, isVoice) =>
+            {
+                // Only add new requests!
+                MissionControlState missionControlState = (MissionControlState)state; // We have bigger problems if this cast fails!
+                if (!missionControlState.playersRequstedTeleport.Contains(playerWhoSentMessage))
+                {
+                    LethalBotAI lethalBotAI = state.ai;
+                    lethalBotAI.SendChatMessage("Hold on, I will teleport you back to the ship as soon as possible.");
+                    missionControlState.playersRequstedTeleport.Enqueue(playerWhoSentMessage);
+                }
+                return true;
+            }));
+
+            // A player is asking us to get off the terminal,
+            // probably so they can use it.
+            ChatCommandsManager.RegisterCommandForState<MissionControlState>(new ChatCommand(HOP_OFF_THE_TERMINAL_COMMAND, (state, playerWhoSentMessage, message, isVoice) =>
+            {
+                MissionControlState missionControlState = (MissionControlState)state; // We have bigger problems if this cast fails!
+                if (!missionControlState.playerRequestedTerminal)
+                {
+                    LethalBotAI lethalBotAI = state.ai;
+                    lethalBotAI.SendChatMessage("Understood, I am leaving the terminal now.");
+                }
+                missionControlState.playerRequestedTerminal = true;
+                missionControlState.waitForTerminalTime = 0f;
+                return true;
+            }));
+
+            // A player is asking us to transmit a message
+            ChatCommandsManager.RegisterCommandForState<MissionControlState>(new ChatCommand(Const.TRANSMIT_KEYWORD, (state, playerWhoSentMessage, message, isVoice) =>
+            {
+                // First we need to extract the message!
+                // FIXME: There has to be a better way to do this!
+                MissionControlState missionControlState = (MissionControlState)state; // We have bigger problems if this cast fails!
+                LethalBotAI lethalBotAI = state.ai;
+                int transmitIndex = message.IndexOf(Const.TRANSMIT_KEYWORD) + Const.TRANSMIT_KEYWORD_LENGTH;
+                string messageToTransmit = message.Substring(transmitIndex).Trim();
+                lethalBotAI.SendChatMessage($"Alright, I will relay, {messageToTransmit} to the rest of the crew.");
+
+                // Queue the message to be sent!
+                missionControlState.SendMessageUsingSignalTranslator(messageToTransmit, MessagePriority.High);
+                return true;
+            }));
+
+            // Panik state
+            // We are paniking right now, ignore default chat commands
+            ChatCommandsManager.RegisterIgnoreDefaultForState<PanikState>();
+
+            // Jester is a special case, we should not panic if we are already panicking!
+            ChatCommandsManager.RegisterCommandForState<PanikState>(new ChatCommand(JESTER_COMMAND, (state, playerWhoSentMessage, message, isVoice) =>
+            {
+                PanikState panikState = (PanikState)state;
+                LethalBotAI lethalBotAI = state.ai;
+                if (panikState.CurrentEnemy is JesterAI || lethalBotAI.isOutside)
+                {
+                    return true;
+                }
+                EnemyAI? enemyAI = state.FindNearbyJester();
+                if (enemyAI == null)
+                {
+                    return true;
+                }
+                panikState.wasFleeingJester = true;
+                panikState.CurrentEnemy = enemyAI;
+                panikState.calmDownTimer = 0f;
+                float? fearRange = lethalBotAI.GetFearRangeForEnemies(panikState.CurrentEnemy);
+                if (fearRange.HasValue)
+                {
+                    panikState.RestartPanikCoroutine(panikState.CurrentEnemy, fearRange.Value);
+                    if ((Time.timeSinceLevelLoad - panikState.lastDeclaredJesterTimer) > PanikState.declareJesterCooldownTime)
+                    {
+                        panikState.lastDeclaredJesterTimer = Time.timeSinceLevelLoad;
+                        lethalBotAI.SendChatMessage("JESTER!!! RUN!!!", true);
+                    }
+                }
+                return true;
+            }));
+        }
+
+        /// <summary>
+        /// Helper function that registers custom chat command that are added by mods!
+        /// </summary>
+        /// <remarks>
+        /// This exists for the sole purpose 
+        /// of allowing modders a function to patch to that will guarantee two things:<br/>
+        /// 1. The ability to override the default chat commands as desired.<br/>
+        /// 2. A hook to safely register their modded chat commands.
+        /// </remarks>
+        private static void RegisterCustomChatCommands()
+        {
+            // We do nothing here, by default.......
+            return;
         }
 
         /// <summary>

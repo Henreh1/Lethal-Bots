@@ -212,6 +212,7 @@ namespace LethalBots.AI.AIStates
         public override void PlayerHeard(Vector3 noisePosition)
         {
             // Go towards the sound heard
+            lookingAroundTimer = 0f;
             this.targetLastKnownPosition = noisePosition;
             ai.LethalBotIdentity.Voice.TryPlayVoiceAudio(new PlayVoiceParameters()
             {

@@ -230,16 +230,6 @@ namespace LethalBots.AI.AIStates
             });
         }
 
-        public override void OnPlayerChatMessageReceived(string message, PlayerControllerB playerWhoSentMessage, bool isVoice)
-        {
-            // We are already transferring loot, no need to respond to transfer loot messages
-            if (message.Contains("transfer loot"))
-            {
-                return;
-            }
-            base.OnPlayerChatMessageReceived(message, playerWhoSentMessage, isVoice);
-        }
-
         /// <remarks>
         /// We give the position of the entrance we want a safe path to!<br/>
         /// We return null if we are not outside or our target entrance is null!
