@@ -204,6 +204,8 @@ namespace LethalBots.Constants
         public const float TIMER_CHILL_AT_SHIP_AT_COMPANY = 2f;
 
         // Searching for scrap state
+        public const float MAX_STRAGGLER_DISTANCE_HOR = 12.5f;
+        public const float MAX_STRAGGLER_DISTANCE_VER = 25f;
         public const float TIMER_SEARCH_FOR_SCRAP = 60f;
         public const float TIMER_CHECK_FOR_TRAPPED_PLAYER = 2.5f;
         public const float MIN_TIME_SEARCH_LOOKING_AROUND = 2f;

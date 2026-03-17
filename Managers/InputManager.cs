@@ -231,6 +231,23 @@ namespace LethalBots.Managers
                         AllowSwearing = Plugin.Config.AllowSwearing.Value
                     });
 
+                    // We are following a human player, leave our current group or join theirs!
+                    int playerGroupID = GroupManager.Instance.GetGroupId(localPlayer);
+                    if (GroupManager.Instance.IsPlayerInGroup(player) || playerGroupID != GroupManager.INVALID_GROUP_INDEX)
+                    {
+                        // If we are not in the human player's group, join them
+                        if (playerGroupID != GroupManager.INVALID_GROUP_INDEX)
+                        {
+                            // AddToGroup internally checks if the bot is already in the group!
+                            GroupManager.Instance.AddToGroupAndSync(playerGroupID, player);
+                        }
+                        else
+                        {
+                            // Leave the previous group so the the group leader can update as needed
+                            GroupManager.Instance.RemoveFromCurrentGroupAndSync(player);
+                        }
+                    }
+
                     lethalBot.SyncAssignTargetAndSetMovingTo(localPlayer);
 
                     if (Plugin.Config.ChangeSuitAutoBehaviour.Value)
@@ -240,6 +257,10 @@ namespace LethalBots.Managers
                 }
                 else if (currentBotState != EnumAIStates.SearchingForScrap)
                 {
+                    if (GroupManager.Instance.ArePlayersInSameGroup(player, localPlayer))
+                    {
+                        GroupManager.Instance.RemoveFromCurrentGroupAndSync(player);
+                    }
                     lethalBot.State = new SearchingForScrapState(lethalBot.State);
                     lethalBot.targetPlayer = null; // Clear target player since we are not following them anymore
                 }

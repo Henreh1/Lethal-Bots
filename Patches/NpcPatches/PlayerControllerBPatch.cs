@@ -944,6 +944,17 @@ namespace LethalBots.Patches.NpcPatches
         //    });
         //}
 
+        [HarmonyPatch("KillPlayer")]
+        [HarmonyPostfix]
+        static void KillPlayer_PostFix(PlayerControllerB __instance)
+        {
+            // Remove player from their group
+            if (__instance.IsOwner && __instance.isPlayerDead)
+            {
+                GroupManager.Instance.RemoveFromCurrentGroupAndSync(__instance);
+            }
+        }
+
         /// <summary>
         /// Patch to add text when pointing at an lethalBot at grab range,<br/>
         /// shows the different possible actions for interacting with lethalBot

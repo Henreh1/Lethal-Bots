@@ -120,6 +120,15 @@ namespace LethalBots.Managers
                 defaultAIState = (EnumDefaultAIState)configIdentity.defaultAIState;
             }
 
+            // Internal Group ID
+            int? internalGroupID = configIdentity.groupID;
+            if (internalGroupID == null)
+            {
+                // No group ID specified, fallback to invalid index
+                Plugin.LogWarning($"Could not get internal group id for bot, for {configIdentity.name}, now using default value.");
+                internalGroupID = GroupManager.INVALID_GROUP_INDEX;
+            }
+
             // Voice
             LethalBotVoice voice = new LethalBotVoice(configIdentity.voiceFolder,
                                                 configIdentity.volume, 
@@ -129,7 +138,7 @@ namespace LethalBots.Managers
             LethalBotLoadout loadout = LoadoutManager.Instance.GetLethalBotLoadoutWithName(configIdentity.loadoutName ?? string.Empty);
 
             // LethalBotIdentity
-            return new LethalBotIdentity(idIdentity, name, suitID, voice, loadout, defaultAIState);
+            return new LethalBotIdentity(idIdentity, name, suitID, voice, loadout, internalGroupID.Value, defaultAIState);
         }
 
         public string[] GetIdentitiesNamesLowerCaseWithoutSpace()

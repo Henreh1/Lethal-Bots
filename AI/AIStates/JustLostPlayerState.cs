@@ -115,6 +115,8 @@ namespace LethalBots.AI.AIStates
                         ai.StopMoving();
                         ai.SyncTeleportLethalBot(entranceTeleportPos.Value, !entrance?.isEntranceToBuilding ?? !ai.isOutside, entrance);
                         targetLastKnownPosition = ai.targetPlayer.transform.position;
+                        ai.State = new GetCloseToPlayerState(this); // Just in case we enter around the same time as the player!
+                        return;
                     }
                     else
                     {

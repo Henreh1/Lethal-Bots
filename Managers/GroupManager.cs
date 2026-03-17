@@ -1,5 +1,6 @@
 ﻿using GameNetcodeStuff;
 using LethalBots.NetworkSerializers;
+using LethalBots.AI;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -25,9 +26,9 @@ namespace LethalBots.Managers
 
         public NetworkList<LethalBotGroupMemberNetworkSerializable> LethalBotGroups = new NetworkList<LethalBotGroupMemberNetworkSerializable>(writePerm: NetworkVariableWritePermission.Server);
 
-        private Dictionary<ulong, int> memberToGroup = new Dictionary<ulong, int>();
-        private Dictionary<int, HashSet<ulong>> groupMembers = new Dictionary<int, HashSet<ulong>>();
-        private Dictionary<int, ulong> groupLeaders = new Dictionary<int, ulong>();
+        private readonly Dictionary<ulong, int> memberToGroup = new Dictionary<ulong, int>();
+        private readonly Dictionary<int, HashSet<ulong>> groupMembers = new Dictionary<int, HashSet<ulong>>();
+        private readonly Dictionary<int, ulong> groupLeaders = new Dictionary<int, ulong>();
 
         private int nextGroupId = DEFAULT_GROUP_INDEX;
 
@@ -36,7 +37,7 @@ namespace LethalBots.Managers
         /// </summary>
         private void Awake()
         {
-            // Prevent multiple instances of the SaveManager
+            // Prevent multiple instances of the GroupManager
             if (Instance != null && Instance != this)
             {
                 if (Instance.IsSpawned && Instance.IsServer)
@@ -138,11 +139,17 @@ namespace LethalBots.Managers
         /// <summary>
         /// Adds the given <paramref name="member"/> to the given <paramref name="groupId"/>
         /// </summary>
+        /// <remarks>
+        /// This function does nothing if the given <paramref name="member"/> is already in the given <paramref name="groupId"/>
+        /// </remarks>
         /// <param name="groupId"></param>
         /// <param name="member"></param>
         private void AddToGroup(int groupId, PlayerControllerB member)
         {
-            if (!IsServer || !DoesGroupExist(groupId))
+            // This should only be called on the server
+            if (!IsServer 
+                || !DoesGroupExist(groupId) 
+                || IsPlayerInGroup(member, groupId))
                 return;
 
             RemoveFromCurrentGroup(member);
@@ -186,6 +193,54 @@ namespace LethalBots.Managers
             if (player.TryGet(out PlayerControllerB groupLeader))
             {
                 AddToGroup(groupId, groupLeader);
+            }
+        }
+
+        /// <summary>
+        /// Used by <see cref="LethalBotAI"/> for their predefined groups!
+        /// </summary>
+        /// <remarks>
+        /// This function will silently call <see cref="CreateGroup(PlayerControllerB)"/> if a human player is given.
+        /// </remarks>
+        /// <param name="player"></param>
+        public void CreateOrJoinGroupAndSync(PlayerControllerB player)
+        {
+            // This only works for bots!
+            LethalBotAI? lethalBotAI = LethalBotManager.Instance.GetLethalBotAI(player);
+            if (lethalBotAI == null)
+            {
+                CreateGroupAndSync(player);
+                return;
+            }
+
+            if (IsServer)
+            {
+                // Alright, do we join a group or start one?
+                if (DoesInternalGroupExist(lethalBotAI, out int groupID))
+                {
+                    AddToGroup(groupID, player); // Another bot has already created the group
+                }
+                else
+                {
+                    CreateGroup(player); // No other bot with our id is a leader of a group, make our own!
+                }
+            }
+            else
+            {
+                CreateOrJoinGroupServerRpc(player);
+            }
+        }
+
+        /// <summary>
+        /// Helper rpc that allows bots that are not owned by the host to auto create or join groups
+        /// </summary>
+        /// <param name="player"></param>
+        [ServerRpc(RequireOwnership = false)]
+        private void CreateOrJoinGroupServerRpc(NetworkBehaviourReference player)
+        {
+            if (player.TryGet(out PlayerControllerB groupLeader))
+            {
+                CreateOrJoinGroupAndSync(groupLeader);
             }
         }
 
@@ -259,6 +314,19 @@ namespace LethalBots.Managers
         public bool IsPlayerInGroup(PlayerControllerB player)
         {
             return GetGroupId(player) != INVALID_GROUP_INDEX;
+        }
+
+        /// <summary>
+        /// Checks if the given <paramref name="player"/> is in the given <paramref name="groupID"/>.
+        /// </summary>
+        /// <remarks>
+        /// If you want to check if the player is in a group in general, use <see cref="IsPlayerInGroup(PlayerControllerB)"/> instead.
+        /// </remarks>
+        /// <param name="player"></param>
+        /// <returns></returns>
+        public bool IsPlayerInGroup(PlayerControllerB player, int groupID)
+        {
+            return GetGroupId(player) == groupID;
         }
 
         /// <summary>
@@ -489,6 +557,7 @@ namespace LethalBots.Managers
         /// <returns>The furthest <see cref="PlayerControllerB"/> that is in our given group.</returns>
         public PlayerControllerB? GetFurthestMemberFromCenter(int groupId)
         {
+            // Make sure the group exists and has more than one member.
             if (!groupMembers.TryGetValue(groupId, out var members) || members.Count <= 1)
                 return null;
 
@@ -518,11 +587,68 @@ namespace LethalBots.Managers
         /// </summary>
         public void ResetAndRemoveAllGroups()
         {
+            // Server only
+            if (!base.IsServer)
+            {
+                return;
+            }
+
             nextGroupId = DEFAULT_GROUP_INDEX;
             memberToGroup.Clear();
             groupMembers.Clear();
             groupLeaders.Clear();
             LethalBotGroups.Clear();
+        }
+
+        #endregion
+
+        #region Bot Helpers
+
+        /// <summary>
+        /// Internal helper that checks if an internal group exists
+        /// </summary>
+        /// <param name="lethalBotAI"></param>
+        /// <param name="groupID">The group id for the runtime group. Will return <see cref="INVALID_GROUP_INDEX"/> if no internal group exists</param>
+        /// <returns></returns>
+        public bool DoesInternalGroupExist(LethalBotAI lethalBotAI, out int groupID)
+        {
+            groupID = INVALID_GROUP_INDEX;
+            if (lethalBotAI == null)
+            {
+                return false;
+            }
+
+            int desiredInternalGroupID = lethalBotAI.LethalBotIdentity.GroupID;
+            LethalBotAI[] lethalBotAIs = LethalBotManager.Instance.GetLethalBotAIs();
+            foreach (var otherLethalBotAI in lethalBotAIs)
+            {
+                // Must be valid and not us.
+                if (otherLethalBotAI == null 
+                    || otherLethalBotAI == lethalBotAI)
+                {
+                    continue;
+                }
+
+                // They are dead, not a valid member of a group.....anymore
+                PlayerControllerB? lethalBotController = lethalBotAI?.NpcController?.Npc;
+                if (lethalBotController == null 
+                    || !lethalBotController.isPlayerControlled 
+                    || lethalBotController.isPlayerDead)
+                {
+                    continue;
+                }
+
+                // Check if we have the same internal group
+                if (otherLethalBotAI.LethalBotIdentity.GroupID == desiredInternalGroupID)
+                {
+                    if (IsPlayerGroupLeader(otherLethalBotAI.NpcController.Npc, out groupID))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         #endregion

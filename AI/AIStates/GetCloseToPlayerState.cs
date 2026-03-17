@@ -32,6 +32,11 @@ namespace LethalBots.AI.AIStates
             ai.targetPlayer = targetPlayer;
         }
 
+        public GetCloseToPlayerState(AIState state, PlayerControllerB targetPlayer) : this(state)
+        {
+            ai.targetPlayer = targetPlayer;
+        }
+
         public override void OnEnterState()
         {
             // Kinda hard to transfer loot when you're following a player!
@@ -61,6 +66,31 @@ namespace LethalBots.AI.AIStates
                     || !StartOfRound.Instance.shipHasLanded))
             {
                 return;
+            }
+
+            // If we are in a group, only follow the group leader
+            int groupID = GroupManager.Instance.GetGroupId(npcController.Npc);
+            if (groupID != GroupManager.INVALID_GROUP_INDEX)
+            {
+                PlayerControllerB? groupLeader = GroupManager.Instance.GetGroupLeader(groupID);
+                if (groupLeader != null)
+                {
+                    if (groupLeader == npcController.Npc)
+                    {
+                        ai.State = new SearchingForScrapState(this);
+                        return;
+                    }
+                    else if (ai.targetPlayer != groupLeader)
+                    {
+                        ai.targetPlayer = groupLeader;
+                        targetLastKnownPosition = groupLeader.transform.position;
+                    }
+                }
+                // This should never happen, but if it does......
+                else
+                {
+                    GroupManager.Instance.RemoveFromCurrentGroupAndSync(npcController.Npc);
+                }
             }
 
             // Lost target player
@@ -140,6 +170,7 @@ namespace LethalBots.AI.AIStates
 
                 // If we can't path to the player, this is probably a mineshaft map and they are probably on a diffrent floor than us!
                 bool usingElevator = false;
+                bool planningToUseElevator = false;
                 if (targetLastKnownPosition.HasValue && LethalBotAI.ElevatorScript != null && !ai.IsValidPathToTarget(targetLastKnownPosition.Value, false))
                 {
                     if (ai.targetPlayer.isInsideFactory)
@@ -148,6 +179,7 @@ namespace LethalBots.AI.AIStates
                         if (isPlayerNearElevatorEntrance && !ai.IsInElevatorStartRoom)
                         {
                             usingElevator = ai.UseElevator(true);
+                            planningToUseElevator = true;
 
                             // If we are going to use the elevator to go up,
                             // we must drop the baby maneater before using the elevator
@@ -161,12 +193,13 @@ namespace LethalBots.AI.AIStates
                         else if (!isPlayerNearElevatorEntrance && ai.IsInElevatorStartRoom)
                         {
                             usingElevator = ai.UseElevator(false);
+                            planningToUseElevator = true;
                         }
                     }
                 }
 
                 // Don't interrupt elevator code!
-                if (!usingElevator)
+                if (!usingElevator && !planningToUseElevator)
                 {
                     ai.SyncAssignTargetAndSetMovingTo(ai.targetPlayer);
                     ai.OrderMoveToDestination();
@@ -191,12 +224,14 @@ namespace LethalBots.AI.AIStates
                     if (targetLastKnownPosition.HasValue && LethalBotAI.ElevatorScript != null && !ai.IsValidPathToTarget(targetLastKnownPosition.Value, false))
                     {
                         bool usingElevator = false;
+                        bool planningToUseElevator = false;
                         if (ai.targetPlayer.isInsideFactory)
                         {
                             bool isPlayerNearElevatorEntrance = ai.IsPlayerNearElevatorEntrance(ai.targetPlayer);
                             if (isPlayerNearElevatorEntrance && !ai.IsInElevatorStartRoom)
                             {
                                 usingElevator = ai.UseElevator(true);
+                                planningToUseElevator = true;
 
                                 // If we are going to use the elevator to go up,
                                 // we must drop the baby maneater before using the elevator
@@ -210,11 +245,12 @@ namespace LethalBots.AI.AIStates
                             else if (!isPlayerNearElevatorEntrance && ai.IsInElevatorStartRoom)
                             {
                                 usingElevator = ai.UseElevator(false);
+                                planningToUseElevator = true;
                             }
                         }
 
                         // Don't interrupt elevator code!
-                        if (!usingElevator)
+                        if (!usingElevator && !planningToUseElevator)
                         {
                             ai.SyncAssignTargetAndSetMovingTo(ai.targetPlayer);
                             ai.OrderMoveToDestination();

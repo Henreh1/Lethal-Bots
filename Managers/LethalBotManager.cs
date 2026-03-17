@@ -1684,6 +1684,12 @@ namespace LethalBots.Managers
                     HUDManager.Instance.UpdateBoxesSpectateUI();
                 }
 
+                // Remove bot from their group
+                if (base.IsOwner)
+                {
+                    GroupManager.Instance.RemoveFromCurrentGroupAndSync(lethalBotController);
+                }
+
                 // Finally update player counts
                 // NEEDTOVALIDATE: This function already runs on all clients, do we need this function call here?
                 //SendNewPlayerCountServerRpc(instanceSOR.connectedPlayersAmount, instanceSOR.livingPlayers, AllRealPlayersCount);
@@ -3508,7 +3514,6 @@ namespace LethalBots.Managers
         {
             DictEnemyAINoiseListeners.Clear();
             ListEnemyAINonNoiseListeners.Clear();
-            GroupManager.Instance.ResetAndRemoveAllGroups();
 
             // Clear the mission controller bot!
             // No need for an RPC here since this is called for all players!
@@ -3516,6 +3521,7 @@ namespace LethalBots.Managers
             {
                 MissionControlPlayer = null;
                 LootTransferPlayers.Clear();
+                GroupManager.Instance.ResetAndRemoveAllGroups();
             }
             SetLastReportedTimeOfDay(DayMode.Dawn);
 
@@ -3740,6 +3746,12 @@ namespace LethalBots.Managers
                         lethalBotAI.HangupPhone();
                     }
                     CleanupLethalPhoneForBot(lethalBotController);
+                }
+
+                // Remove bot from their group
+                if (base.IsOwner)
+                {
+                    GroupManager.Instance.RemoveFromCurrentGroupAndSync(lethalBotController);
                 }
 
                 // Cache the lethal bot stats for the end of game stats.

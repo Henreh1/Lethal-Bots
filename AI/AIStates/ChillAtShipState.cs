@@ -27,6 +27,18 @@ namespace LethalBots.AI.AIStates
             CurrentState = EnumAIStates.ChillAtShip;
         }
 
+        public override void OnEnterState()
+        {
+            // Unless we are a group leader, entering this state means we are chilling at the ship by ourself now
+            PlayerControllerB ourController = npcController.Npc;
+            int groupID = GroupManager.Instance.GetGroupId(ourController);
+            if (groupID != GroupManager.INVALID_GROUP_INDEX && GroupManager.Instance.GetGroupLeader(groupID) != ourController)
+            {
+                GroupManager.Instance.RemoveFromCurrentGroupAndSync(ourController);
+            }
+            base.OnEnterState();
+        }
+
         public override void OnExitState(AIState newState)
         {
             base.OnExitState(newState);
@@ -179,7 +191,7 @@ namespace LethalBots.AI.AIStates
 
                 // Try to find the closest player to target
                 PlayerControllerB? player = ai.CheckLOSForClosestPlayer(Const.LETHAL_BOT_FOV, Const.LETHAL_BOT_ENTITIES_RANGE, (int)Const.DISTANCE_CLOSE_ENOUGH_HOR);
-                if (player != null && player != LethalBotManager.Instance.MissionControlPlayer) // new target
+                if (player != null && !LethalBotManager.Instance.IsPlayerLethalBot(player) && player != LethalBotManager.Instance.MissionControlPlayer) // new target
                 {
                     // Don't compromise the ship by being loud!
                     if (!ai.CheckProximityForEyelessDogs())

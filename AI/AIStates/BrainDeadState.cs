@@ -55,6 +55,12 @@ namespace LethalBots.AI.AIStates
                 LethalBotManager.Instance.RemovePlayerFromLootTransferListAndSync(npcController.Npc);
             }
 
+            // We are dead, remove ourself from the group
+            if (GroupManager.Instance.IsPlayerInGroup(npcController.Npc))
+            {
+                GroupManager.Instance.RemoveFromCurrentGroupAndSync(npcController.Npc);
+            }
+
             // Check if every human player is dead,
             // and if our fellow players and bots are on the ship
             bool allLivingPlayersOnShip = LethalBotManager.Instance.AreAllPlayersOnTheShip();

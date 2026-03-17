@@ -2278,6 +2278,7 @@ namespace LethalBots.AI
                 range = Mathf.Clamp(range, 0, 30);
             }
 
+            List<PlayerControllerB> groupMembers = GroupManager.Instance.GetOtherGroupMembers(NpcController.Npc);
             StartOfRound instanceSOR = StartOfRound.Instance;
             Transform thisLethalBotCamera = this.NpcController.Npc.gameplayCamera.transform;
             float currentClosestDistance = 1000f;
@@ -2286,7 +2287,10 @@ namespace LethalBots.AI
             {
                 PlayerControllerB player = instanceSOR.allPlayerScripts[i];
 
-                if (!player.isPlayerControlled || player.isPlayerDead || LethalBotManager.Instance.IsPlayerLethalBot(player))
+                if (!player.isPlayerControlled 
+                    || player.isPlayerDead 
+                    || (!groupMembers.Contains(player) 
+                        && LethalBotManager.Instance.IsPlayerLethalBot(player)))
                 {
                     continue;
                 }
@@ -3080,22 +3084,22 @@ namespace LethalBots.AI
                             }
 
                             // Get potential door positions
-                            Vector3? doorPos1 = GetOffsetLockPickerPosition(lockedDoor);
-                            Vector3? doorPos2 = GetOffsetLockPickerPosition(lockedDoor, true);
+                            Vector3 doorPos1 = GetOffsetLockPickerPosition(lockedDoor);
+                            Vector3 doorPos2 = GetOffsetLockPickerPosition(lockedDoor, true);
 
                             // Check path validity and distance for both positions
                             float? doorDistance1 = null;
                             float? doorDistance2 = null;
 
                             Plugin.LogDebug("[UnlockDoorIfNeeded] Checking path to front of door!");
-                            if (doorPos1.HasValue && IsValidPathToTarget(doorPos1.Value, true))
+                            if (IsValidPathToTarget(doorPos1, true))
                             {
                                 Plugin.LogDebug("[UnlockDoorIfNeeded] Successfuly found path to front of door!");
                                 doorDistance1 = pathDistance;
                             }
 
                             Plugin.LogDebug("[UnlockDoorIfNeeded] Checking path to back of door!");
-                            if (doorPos2.HasValue && IsValidPathToTarget(doorPos2.Value, true))
+                            if (IsValidPathToTarget(doorPos2, true))
                             {
                                 Plugin.LogDebug("[UnlockDoorIfNeeded] Successfuly found path to back of door!");
                                 doorDistance2 = pathDistance;
@@ -5473,8 +5477,11 @@ namespace LethalBots.AI
             if (!allowInteractTrigger && lethalBotController.currentTriggerInAnimationWith != null)
             {
                 lethalBotController.CancelSpecialTriggerAnimations();
-                StopCoroutine(useInteractTriggerCoroutine);
-                useInteractTriggerCoroutine = null;
+                if (useInteractTriggerCoroutine != null)
+                {
+                    StopCoroutine(useInteractTriggerCoroutine);
+                    useInteractTriggerCoroutine = null;
+                }
             }
 
             if ((bool)lethalBotController.inAnimationWithEnemy)
@@ -8196,6 +8203,12 @@ namespace LethalBots.AI
             this.LethalBotIdentity.Voice.StopAudioFadeOut();
             this.State = new BrainDeadState(this);
             Plugin.LogDebug($"Ran kill lethalBot function for LOCAL client #{NetworkManager.LocalClientId}, lethalBot object: Bot #{this.BotId} {lethalBotController.playerUsername}");
+
+            // Remove bot from their group
+            if (base.IsOwner)
+            {
+                GroupManager.Instance.RemoveFromCurrentGroupAndSync(lethalBotController);
+            }
 
             // Compat with revive company mod
             if (Plugin.IsModReviveCompanyLoaded)

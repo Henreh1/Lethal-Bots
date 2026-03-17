@@ -21,6 +21,7 @@ namespace LethalBots.AI.AIStates
     {
         private Coroutine? searchingWanderCoroutine = null;
         private bool grabbedLoadout;
+        private bool formedGroup;
         private float scrapTimer;
         private float waitForSafePathTimer; // This is how long we have been waiting for a safe path to our target entrance.
         private int entranceAttempts; // This is how many times we spent going into the same entrance!
@@ -29,6 +30,7 @@ namespace LethalBots.AI.AIStates
         {
             CurrentState = EnumAIStates.SearchingForScrap;
             grabbedLoadout = false;
+            formedGroup = false;
             entranceAttempts = 0;
             if (entranceToAvoid != null)
             {
@@ -42,6 +44,7 @@ namespace LethalBots.AI.AIStates
         {
             CurrentState = EnumAIStates.SearchingForScrap;
             grabbedLoadout = false;
+            formedGroup = false;
             entranceAttempts = 0;
             if (entranceToAvoid != null)
             {
@@ -53,12 +56,13 @@ namespace LethalBots.AI.AIStates
 
         public override void OnEnterState()
         {
+            PlayerControllerB ourController = npcController.Npc;
             if (!hasBeenStarted)
             {
                 // We are now searching for scrap and are no longer transferring loot!
-                if (LethalBotManager.Instance.LootTransferPlayers.Contains(npcController.Npc))
+                if (LethalBotManager.Instance.LootTransferPlayers.Contains(ourController))
                 {
-                    LethalBotManager.Instance.RemovePlayerFromLootTransferListAndSync(npcController.Npc);
+                    LethalBotManager.Instance.RemovePlayerFromLootTransferListAndSync(ourController);
                 }
             }
 
@@ -94,6 +98,37 @@ namespace LethalBots.AI.AIStates
                 grabbedLoadout = true;
                 ai.State = new GrabLoadoutState(this);
                 return;
+            }
+
+            // Create or join our assigned internal group
+            if (!formedGroup)
+            {
+                // Only check this once!
+                formedGroup = true;
+                int internalGroupID = ai.LethalBotIdentity.GroupID;
+                if (internalGroupID != GroupManager.INVALID_GROUP_INDEX && !GroupManager.Instance.IsPlayerInGroup(npcController.Npc))
+                {
+                    // Only join our predefined group if we are near the group leader
+                    if (GroupManager.Instance.DoesInternalGroupExist(ai, out int existingGroupID))
+                    {
+                        PlayerControllerB? groupLeader = GroupManager.Instance.GetGroupLeader(existingGroupID);
+                        if (groupLeader != null)
+                        {
+                            float sqrHorizontalDistanceWithTarget = Vector3.Scale((groupLeader.transform.position - npcController.Npc.transform.position), new Vector3(1, 0, 1)).sqrMagnitude;
+                            float sqrVerticalDistanceWithTarget = Vector3.Scale((groupLeader.transform.position - npcController.Npc.transform.position), new Vector3(0, 1, 0)).sqrMagnitude;
+                            if (sqrHorizontalDistanceWithTarget < Const.DISTANCE_AWARENESS_HOR * Const.DISTANCE_AWARENESS_HOR
+                                    && sqrVerticalDistanceWithTarget < Const.DISTANCE_AWARENESS_VER * Const.DISTANCE_AWARENESS_VER)
+                            {
+                                GroupManager.Instance.CreateOrJoinGroupAndSync(npcController.Npc);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        GroupManager.Instance.CreateOrJoinGroupAndSync(npcController.Npc);
+                    }
+                    return;
+                }
             }
 
             // Start coroutine for wandering
@@ -150,7 +185,60 @@ namespace LethalBots.AI.AIStates
                 return;
             }
 
+            // Use items in our inventory based on the current situation
             SelectBestItemFromInventory();
+
+            // Group logic
+            int groupID = GroupManager.Instance.GetGroupId(npcController.Npc);
+            if (groupID != GroupManager.INVALID_GROUP_INDEX)
+            {
+                // The group leader does their best to make sure no one falls behind.......
+                PlayerControllerB? groupLeader = GroupManager.Instance.GetGroupLeader(groupID);
+                if (groupLeader == npcController.Npc)
+                {
+                    // NOTE: We can safely assume that groupLeader is the same as npcController.Npc here
+                    PlayerControllerB? straggler = GroupManager.Instance.GetFurthestMemberFromCenter(groupID);
+                    if (straggler != null && !ai.AreWeExposed()) // straggler != groupLeader // actually, we allow ourself since the rest of the group may have fallen behind
+                    {
+                        Vector3 groupCenter = GroupManager.Instance.GetGroupCenter(groupLeader, groupID);
+                        float sqrHorizontalDistanceWithTarget = Vector3.Scale((groupCenter - straggler.transform.position), new Vector3(1, 0, 1)).sqrMagnitude;
+                        float sqrVerticalDistanceWithTarget = Vector3.Scale((groupCenter - straggler.transform.position), new Vector3(0, 1, 0)).sqrMagnitude;
+                        if (sqrHorizontalDistanceWithTarget > Const.MAX_STRAGGLER_DISTANCE_HOR * Const.MAX_STRAGGLER_DISTANCE_HOR
+                            || sqrVerticalDistanceWithTarget > Const.MAX_STRAGGLER_DISTANCE_VER * Const.MAX_STRAGGLER_DISTANCE_VER)
+                        {
+                            if (ai.searchForScrap.searchInProgress)
+                            {
+                                // Stop the coroutine while we wait for the player or bot who fell behind
+                                ai.searchForScrap.StopSearch();
+                            }
+                            ai.StopMoving();
+                            return;
+                        }
+                    }
+                }
+                // Only the group leader should be in the searching for scrap state
+                else if (groupLeader != null)
+                {
+                    // Cheat a little here and let the bot have perfect knowledge of where their group leader is.....
+                    float sqrHorizontalDistanceWithTarget = Vector3.Scale((groupLeader.transform.position - npcController.Npc.transform.position), new Vector3(1, 0, 1)).sqrMagnitude;
+                    float sqrVerticalDistanceWithTarget = Vector3.Scale((groupLeader.transform.position - npcController.Npc.transform.position), new Vector3(0, 1, 0)).sqrMagnitude;
+                    if (sqrHorizontalDistanceWithTarget < Const.DISTANCE_AWARENESS_HOR * Const.DISTANCE_AWARENESS_HOR
+                            && sqrVerticalDistanceWithTarget < Const.DISTANCE_AWARENESS_VER * Const.DISTANCE_AWARENESS_VER)
+                    {
+                        ai.State = new GetCloseToPlayerState(this, groupLeader);
+                        return;
+                    }
+                    else
+                    {
+                        GroupManager.Instance.RemoveFromCurrentGroupAndSync(npcController.Npc);
+                    }
+                }
+                // This should never happen, but you never know......
+                else
+                {
+                    GroupManager.Instance.RemoveFromCurrentGroupAndSync(npcController.Npc);
+                }
+            }
 
             // If we are outside, we need to move inside first!
             if (ai.isOutside)

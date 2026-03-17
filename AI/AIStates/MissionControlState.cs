@@ -129,6 +129,13 @@ namespace LethalBots.AI.AIStates
                 FindWeapon();
                 grabbedLoadout = false;
             }
+
+            // If we are the mission controller, we cannot be in a group
+            if (LethalBotManager.Instance.MissionControlPlayer == npcController.Npc 
+                && GroupManager.Instance.IsPlayerInGroup(npcController.Npc))
+            {
+                GroupManager.Instance.RemoveFromCurrentGroupAndSync(npcController.Npc);
+            }
             base.OnEnterState();
         }
 
@@ -161,6 +168,12 @@ namespace LethalBots.AI.AIStates
             if (LethalBotManager.Instance.LootTransferPlayers.Contains(npcController.Npc))
             {
                 LethalBotManager.Instance.RemovePlayerFromLootTransferListAndSync(npcController.Npc);
+            }
+
+            // If we are the mission controller, we cannot be in a group
+            if (GroupManager.Instance.IsPlayerInGroup(npcController.Npc))
+            {
+                GroupManager.Instance.RemoveFromCurrentGroupAndSync(npcController.Npc);
             }
 
             // Its kinda hard to be the mission controller if we are not on the ship!
@@ -1322,6 +1335,8 @@ namespace LethalBots.AI.AIStates
                     return "Old Bird";
                 case "Bunker Spider":
                     return "Spider";
+                case "ForestGiant":
+                    return "Giant";
                 default:
                     return defaultName;
             }
