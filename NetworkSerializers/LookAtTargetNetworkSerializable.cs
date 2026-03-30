@@ -1,8 +1,10 @@
 ﻿using GameNetcodeStuff;
 using JetBrains.Annotations;
 using LethalBots.AI;
+using LethalBots.AI.AIStates;
 using LethalBots.Constants;
 using LethalBots.Enums;
+using LethalBots.Utils.Helpers;
 using System;
 using System.Runtime.CompilerServices;
 using Unity.Netcode;
@@ -22,6 +24,7 @@ namespace LethalBots.NetworkSerializers
         public NetworkObjectReference? lookAtSubject;
         public EnumLookAtPriority lookAtPriority;
         public CountdownTimer lookAtExpireTimer;
+        public CountdownTimer lookAtTrackingTimer;
         public IntervalTimer lookAtDurationTimer;
         public bool isSightedIn;
         public bool hasBeenSightedIn;
@@ -43,6 +46,7 @@ namespace LethalBots.NetworkSerializers
             lookAtSubject = null;
             lookAtPriority = EnumLookAtPriority.LOW_PRIORITY;
             lookAtExpireTimer = new CountdownTimer();
+            lookAtTrackingTimer = new CountdownTimer();
             lookAtDurationTimer = new IntervalTimer();
             isSightedIn = false;
             hasBeenSightedIn = false;
@@ -57,6 +61,7 @@ namespace LethalBots.NetworkSerializers
             LethalBotNetworkSerializer.SerializeNullable(serializer, ref lookAtSubject);
             serializer.SerializeValue(ref lookAtPriority);
             serializer.SerializeValue(ref lookAtExpireTimer);
+            serializer.SerializeValue(ref lookAtTrackingTimer);
             serializer.SerializeValue(ref lookAtDurationTimer);
             serializer.SerializeValue(ref isSightedIn);
             serializer.SerializeValue(ref hasBeenSightedIn);
@@ -147,6 +152,7 @@ namespace LethalBots.NetworkSerializers
                 lookAtSubject = this.lookAtSubject,
                 lookAtPriority = this.lookAtPriority,
                 lookAtExpireTimer = this.lookAtExpireTimer.Clone(),
+                lookAtTrackingTimer = this.lookAtTrackingTimer.Clone(),
                 lookAtDurationTimer = this.lookAtDurationTimer.Clone(),
                 isSightedIn = this.isSightedIn,
                 hasBeenSightedIn = this.hasBeenSightedIn,
@@ -242,9 +248,17 @@ namespace LethalBots.NetworkSerializers
         {
             // If we are aiming at a target subject, make sure to update our target lookAtPos!
             PlayerControllerB lethalBotController = npcController.Npc;
-            if (lookAtSubject.HasValue && lookAtSubject.Value.TryGet(out var subject))
+            if (!lookAtTrackingTimer.HasStarted() || lookAtTrackingTimer.Elapsed())
             {
-                lookAtPos = subject.transform.position;
+                lookAtTrackingTimer.Start(UnityEngine.Random.Range(0.05f, 0.3f));
+                if (lookAtSubject.HasValue)
+                {
+                    Vector3? lookAtSubjectPos = lethalBotAI.State?.SelectSubjectTargetPoint(this, lookAtSubject.Value, lethalBotController);
+                    if (lookAtSubjectPos.HasValue)
+                    {
+                        lookAtPos = lookAtSubjectPos.Value;
+                    }
+                }
             }
 
             Vector3 direction = lookAtPos - lethalBotController.gameplayCamera.transform.position;
@@ -313,6 +327,7 @@ namespace LethalBots.NetworkSerializers
                 && lookAtSubject.Equals(other.lookAtSubject)
                 && lookAtPriority == other.lookAtPriority
                 && lookAtExpireTimer == other.lookAtExpireTimer
+                && lookAtTrackingTimer == other.lookAtTrackingTimer
                 && lookAtDurationTimer == other.lookAtDurationTimer
                 && isSightedIn == other.isSightedIn
                 && hasBeenSightedIn == other.hasBeenSightedIn
@@ -333,6 +348,7 @@ namespace LethalBots.NetworkSerializers
             hash.Add(lookAtSubject);
             hash.Add(lookAtPriority);
             hash.Add(lookAtExpireTimer);
+            hash.Add(lookAtTrackingTimer);
             hash.Add(lookAtDurationTimer);
             hash.Add(isSightedIn);
             hash.Add(hasBeenSightedIn);
@@ -350,218 +366,6 @@ namespace LethalBots.NetworkSerializers
         }
 
         public static bool operator !=(LookAtTarget? left, LookAtTarget? right)
-        {
-            return !(left == right);
-        }
-    }
-
-    // TODO: Move these timers into their own class file!
-    [Serializable]
-    public class IntervalTimer : INetworkSerializable, IEquatable<IntervalTimer>
-    {
-        public float timestamp = -1.0f;
-
-        /// <summary>
-        /// Restarts the Interval Timer
-        /// </summary>
-        public void Reset()
-        {
-            timestamp = Time.realtimeSinceStartup;
-        }
-
-        /// <summary>
-        /// Starts the Interval Timer
-        /// </summary>
-        public void Start()
-        {
-            timestamp = Time.realtimeSinceStartup;
-        }
-
-        /// <summary>
-        /// Stops the Interval Timer
-        /// </summary>
-        public void Invalidate()
-        {
-            timestamp = -1.0f;
-        }
-
-        /// <summary>
-        /// Was the Interval Timer started?
-        /// </summary>
-        /// <returns>true: if we were started; otherwise false</returns>
-        public bool HasStarted()
-        {
-            return timestamp > 0f;
-        }
-
-        /// <summary>
-        /// How long has this timer been running!
-        /// </summary>
-        /// <returns></returns>
-        public float GetElapsedTime()
-        {
-            return HasStarted() ? Time.realtimeSinceStartup - timestamp : -1.0f;
-        }
-
-        /// <summary>
-        /// Has the timer been running longer than the given <paramref name="duration"/>
-        /// </summary>
-        /// <param name="duration">The duration to test!</param>
-        /// <returns>true: if we have been running longer than <paramref name="duration"/>; otherwise false</returns>
-        public bool IsGreaterThan(float duration)
-        {
-            return GetElapsedTime() > duration;
-        }
-
-        /// <summary>
-        /// Has the timer been running less than the given <paramref name="duration"/>
-        /// </summary>
-        /// <param name="duration">The duration to test!</param>
-        /// <returns>true: if we have been running less than <paramref name="duration"/>; otherwise false</returns>
-        public bool IsLessThan(float duration)
-        {
-            return GetElapsedTime() < duration;
-        }
-
-        /// <summary>
-        /// Creates a deep copy of this <see cref="IntervalTimer"/> instance
-        /// </summary>
-        /// <returns></returns>
-        public IntervalTimer Clone()
-        {
-            return new IntervalTimer(){
-                timestamp = this.timestamp
-            };
-        }
-
-        public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
-        {
-            serializer.SerializeValue(ref timestamp);
-        }
-
-        public bool Equals(IntervalTimer other)
-        {
-            return timestamp == other.timestamp;
-        }
-
-        public override bool Equals(object? obj)
-        {
-            return obj is IntervalTimer other && Equals(other);
-        }
-
-        public override int GetHashCode()
-        {
-            return HashCode.Combine(timestamp);
-        }
-
-        public static bool operator ==(IntervalTimer? left, IntervalTimer? right)
-        {
-            if (ReferenceEquals(left, right)) return true;
-            if (left is null || right is null) return false;
-            return left.Equals(right);
-        }
-
-        public static bool operator !=(IntervalTimer? left, IntervalTimer? right)
-        {
-            return !(left == right);
-        }
-    }
-
-    [Serializable]
-    public class CountdownTimer : INetworkSerializable, IEquatable<CountdownTimer>
-    {
-        public float startTime = -1.0f;
-        public float endTime = -1.0f;
-
-        /// <summary>
-        /// Restarts the Interval Timer
-        /// </summary>
-        public void Reset()
-        {
-            startTime = -1.0f;
-            endTime = -1.0f;
-        }
-
-        /// <summary>
-        /// Starts the Countdown Timer with the given <paramref name="time"/>
-        /// </summary>
-        /// <param name="time">How long should this timer run</param>
-        public void Start(float time)
-        {
-            startTime = Time.realtimeSinceStartup;
-            endTime = Time.realtimeSinceStartup + (time >= 0 ? time : 0);
-        }
-
-        /// <summary>
-        /// Was the Countdown Timer started?
-        /// </summary>
-        /// <returns>true: if we were started; otherwise false</returns>
-        public bool HasStarted()
-        {
-            return endTime > 0f;
-        }
-
-        /// <summary>
-        /// How long has this timer been running!
-        /// </summary>
-        /// <returns></returns>
-        public float GetElapsedTime()
-        {
-            return HasStarted() ? Time.realtimeSinceStartup - startTime : -1.0f;
-        }
-
-        /// <summary>
-        /// Has this Countdown Timer elapsed
-        /// </summary>
-        /// <returns></returns>
-        public bool Elapsed()
-        {
-            return HasStarted() && endTime <= Time.realtimeSinceStartup;
-        }
-
-        /// <summary>
-        /// Creates a deep copy of this <see cref="CountdownTimer"/> instance
-        /// </summary>
-        /// <returns></returns>
-        public CountdownTimer Clone()
-        {
-            return new CountdownTimer()
-            {
-                startTime = this.startTime,
-                endTime = this.endTime
-            };
-        }
-
-        public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
-        {
-            serializer.SerializeValue(ref startTime);
-            serializer.SerializeValue(ref endTime);
-        }
-
-        public bool Equals(CountdownTimer other)
-        {
-            return startTime == other.startTime 
-                && endTime == other.endTime;
-        }
-
-        public override bool Equals(object? obj)
-        {
-            return obj is CountdownTimer other && Equals(other);
-        }
-
-        public override int GetHashCode()
-        {
-            return HashCode.Combine(startTime, endTime);
-        }
-
-        public static bool operator ==(CountdownTimer? left, CountdownTimer? right)
-        {
-            if (ReferenceEquals(left, right)) return true;
-            if (left is null || right is null) return false;
-            return left.Equals(right);
-        }
-
-        public static bool operator !=(CountdownTimer? left, CountdownTimer? right)
         {
             return !(left == right);
         }

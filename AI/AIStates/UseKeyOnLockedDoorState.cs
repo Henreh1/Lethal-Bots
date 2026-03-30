@@ -2,6 +2,7 @@
 using LethalBots.Constants;
 using LethalBots.Enums;
 using LethalBots.Managers;
+using LethalBots.Utils.Helpers;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -313,16 +314,17 @@ namespace LethalBots.AI.AIStates
             return false;
         }
 
-        // We are unlocking a door, these messages should be queued!
-        public override void OnSignalTranslatorMessageReceived(string message)
+        /// <inheritdoc cref="AIState.RegisterSignalTranslatorCommands"/>
+        public static new void RegisterSignalTranslatorCommands()
         {
-            // Return to the ship when we finish!
-            if (message == "return")
+            // We are unlocking a door, these messages should be queued!
+            ChatCommandsManager.RegisterCommandForState<UseKeyOnLockedDoorState>(new ChatCommand(Const.RETURN_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
             {
-                previousAIState = new ReturnToShipState(this);
-                return;
-            }
-            base.OnSignalTranslatorMessageReceived(message);
+                // Return to the ship when we finish!
+                UseKeyOnLockedDoorState panikState = (UseKeyOnLockedDoorState)state;
+                panikState.previousAIState = new ReturnToShipState(state);
+                return true;
+            }));
         }
     }
 }

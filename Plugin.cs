@@ -37,7 +37,6 @@ using Unity.Netcode;
 using UnityEngine;
 using Object = UnityEngine.Object;
 using GameNetcodeStuff;
-using PySpeech;
 using LethalBots.Patches.ModPatches.LCVR;
 
 namespace LethalBots
@@ -50,8 +49,8 @@ namespace LethalBots
     [BepInDependency(LethalLib.Plugin.ModGUID, BepInDependency.DependencyFlags.HardDependency)]
     [BepInDependency(Const.CSYNC_GUID, BepInDependency.DependencyFlags.HardDependency)]
     [BepInDependency(LethalCompanyInputUtils.PluginInfo.PLUGIN_GUID, BepInDependency.DependencyFlags.HardDependency)]
-    [BepInDependency(Const.PYSPEECH_GUID, BepInDependency.DependencyFlags.HardDependency)]
     // SoftDependencies
+    [BepInDependency(Const.SPEECHRECOGNITIONAPI_GUID, BepInDependency.DependencyFlags.SoftDependency)] // Voice recognition
     [BepInDependency(Const.REVIVECOMPANY_GUID, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(Const.BUNKBEDREVIVE_GUID, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(Const.ZAPRILLATOR_GUID, BepInDependency.DependencyFlags.SoftDependency)]
@@ -87,6 +86,7 @@ namespace LethalBots
         internal static new Configs.Config Config = null!;
         internal static LethalBotsInputs InputActionsInstance = null!;
 
+        internal static bool IsModSpeechRecognitionAPILoaded = false;
         internal static bool IsModTooManyEmotesLoaded = false;
         internal static bool IsModModelReplacementAPILoaded = false;
         internal static bool IsModCustomItemBehaviourLibraryLoaded = false;
@@ -100,6 +100,7 @@ namespace LethalBots
         internal static bool IsModNavmeshInCompanyLoaded = false;
         internal static bool IsModReservedItemSlotCoreLoaded = false;
         internal static bool IsModLethalPhonesLoaded = false;
+        internal static bool IsModGeneralImprovementsLoaded = false;
         private readonly Harmony _harmony = new(ModGUID);
 
         private void Awake()
@@ -175,8 +176,6 @@ namespace LethalBots
             PatchBaseGame();
 
             PatchOtherMods();
-
-            RegisterVoiceCommands();
 
             Logger.LogInfo($"Plugin {MyPluginInfo.PLUGIN_GUID} is loaded!");
         }
@@ -257,6 +256,7 @@ namespace LethalBots
         {
             // -----------------------
             // Are these mods loaded ?
+            IsModSpeechRecognitionAPILoaded = IsModLoaded(Const.SPEECHRECOGNITIONAPI_GUID);
             IsModTooManyEmotesLoaded = IsModLoaded(Const.TOOMANYEMOTES_GUID);
             IsModModelReplacementAPILoaded = IsModLoaded(Const.MODELREPLACEMENT_GUID);
             IsModCustomItemBehaviourLibraryLoaded = IsModLoaded(Const.CUSTOMITEMBEHAVIOURLIBRARY_GUID);
@@ -270,6 +270,7 @@ namespace LethalBots
             IsModNavmeshInCompanyLoaded = IsModLoaded(Const.NAVMESHINCOMPANY_GUID);
             IsModReservedItemSlotCoreLoaded = IsModLoaded(Const.RESERVEDITEMSLOTCORE_GUID);
             IsModLethalPhonesLoaded = IsModLoaded(Const.LETHALPHONES_GUID);
+            IsModGeneralImprovementsLoaded = IsModLoaded(Const.GENERAL_IMPROVEMENTS_GUID);
 
             bool isModMoreEmotesLoaded = IsModLoaded(Const.MOREEMOTES_GUID);
             bool isModBetterEmotesLoaded = IsModLoaded(Const.BETTEREMOTES_GUID);
@@ -403,54 +404,6 @@ namespace LethalBots
                                new HarmonyMethod(typeof(LCVRPatchesPatch), nameof(LCVRPatchesPatch.AfterDamagePlayer_Prefix)));
             }
         }
-
-        #region Voice Commands
-
-        private static readonly FieldInfo bestMatchField = AccessTools.Field(typeof(Speech), "bestMatch");
-
-        private void RegisterVoiceCommands()
-        {
-            // TODO: Revamp the chat command system to be more modular and easier to add new commands
-            // Until then, we have to register all of the commands here manually
-            string[] ValidCommands = new string[]
-            {
-                "jester",
-                "start the ship",
-                "hop off the terminal",
-                "request monitoring",
-                "request teleport",
-                "clear monitoring",
-                "man the ship",
-                "transmit", // FIXME: This command doesn't work due to how speech recognition works, a fix will be made later
-                "transfer loot",
-                "gear up"
-            };
-
-            // Register valid phrases for speech recognition
-            Speech.RegisterPhrases(ValidCommands);
-
-            // Create a handler for recognized speech events
-            void handler(object speechInstance, SpeechEventArgs text)
-            {
-                // Don't do this if the local client has disabled voice recognition
-                if (!Config.AllowVoiceRecognition.Value)
-                {
-                    return;
-                }
-
-                // The local player gets to determine which model to use for their voice recognition.
-                // Our job is to broadcast that to all other players so their bots can respond accordingly.
-                PlayerControllerB? playerControllerB = GameNetworkManager.Instance?.localPlayerController;
-                if (playerControllerB != null && Speech.IsAboveThreshold(ValidCommands, Config.VoiceRecognitionSimilarityThreshold.Value))
-                {
-                    LethalBotManager.Instance?.TransmitVoiceChatAndSync((string)bestMatchField.GetValue(null), (int)playerControllerB.playerClientId);
-                }
-            }
-
-            Speech.RegisterCustomHandler(handler);
-        }
-
-        #endregion
 
         private bool IsModLoaded(string modGUID)
         {

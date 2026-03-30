@@ -3,6 +3,7 @@ using HarmonyLib;
 using LethalBots.Constants;
 using LethalBots.Enums;
 using LethalBots.Managers;
+using LethalBots.Utils.Helpers;
 using LethalLib.Modules;
 using System.Collections;
 using UnityEngine;
@@ -24,6 +25,18 @@ namespace LethalBots.AI.AIStates
         public ChillAtShipState(LethalBotAI ai) : base(ai)
         {
             CurrentState = EnumAIStates.ChillAtShip;
+        }
+
+        public override void OnEnterState()
+        {
+            // Unless we are a group leader, entering this state means we are chilling at the ship by ourself now
+            PlayerControllerB ourController = npcController.Npc;
+            int groupID = GroupManager.Instance.GetGroupId(ourController);
+            if (groupID != GroupManager.INVALID_GROUP_INDEX && GroupManager.Instance.GetGroupLeader(groupID) != ourController)
+            {
+                GroupManager.Instance.RemoveFromCurrentGroupAndSync(ourController);
+            }
+            base.OnEnterState();
         }
 
         public override void OnExitState(AIState newState)
@@ -150,8 +163,6 @@ namespace LethalBots.AI.AIStates
                     else if (LethalBotManager.Instance.AreAllHumanPlayersDead()
                     && LethalBotManager.Instance.AreAllPlayersOnTheShip())
                     {
-                        // HACKHACK: We fake pulling the ship lever to leave early, we will make the bot actually
-                        // use the ship lever once I fix the interact trigger object code later
                         if (leavePlanetTimer > Const.LETHAL_BOT_TIMER_LEAVE_PLANET)
                         {
                             if (npcController.Npc.playersManager.shipHasLanded
@@ -180,7 +191,10 @@ namespace LethalBots.AI.AIStates
 
                 // Try to find the closest player to target
                 PlayerControllerB? player = ai.CheckLOSForClosestPlayer(Const.LETHAL_BOT_FOV, Const.LETHAL_BOT_ENTITIES_RANGE, (int)Const.DISTANCE_CLOSE_ENOUGH_HOR);
-                if (player != null && player != LethalBotManager.Instance.MissionControlPlayer) // new target
+                if (player != null 
+                    && !LethalBotManager.Instance.IsPlayerLethalBot(player) 
+                    && player != LethalBotManager.Instance.MissionControlPlayer
+                    && !GroupManager.Instance.IsPlayerGroupLeader(npcController.Npc, out _)) // new target
                 {
                     // Don't compromise the ship by being loud!
                     if (!ai.CheckProximityForEyelessDogs())
@@ -199,6 +213,9 @@ namespace LethalBots.AI.AIStates
                             AllowSwearing = Plugin.Config.AllowSwearing.Value
                         });
                     }
+
+                    // We are following a human player, leave our current group or join theirs!
+                    GroupManager.Instance.CreateOrJoinGroupWithMembersAndSync(player, new PlayerControllerB[] { npcController.Npc });
 
                     // Assign to new target
                     ai.SyncAssignTargetAndSetMovingTo(player);
@@ -235,8 +252,6 @@ namespace LethalBots.AI.AIStates
                 else if (LethalBotManager.Instance.AreAllHumanPlayersDead()
                 && LethalBotManager.Instance.AreAllPlayersOnTheShip())
                 {
-                    // HACKHACK: We fake pulling the ship lever to leave early, we will make the bot actually
-                    // use the ship lever once I fix the interact trigger object code later
                     if (leavePlanetTimer > Const.LETHAL_BOT_TIMER_LEAVE_PLANET)
                     {
                         if (npcController.Npc.playersManager.shipHasLanded
@@ -299,14 +314,14 @@ namespace LethalBots.AI.AIStates
             });
         }
 
-        public override void OnSignalTranslatorMessageReceived(string message)
+        /// <inheritdoc cref="AIState.RegisterSignalTranslatorCommands"/>
+        public static new void RegisterSignalTranslatorCommands()
         {
             // We are chilling at the ship, this message means nothing to us!
-            if (message == "return")
+            SignalTranslatorCommandsManager.RegisterCommandForState<ChillAtShipState>(new SignalTranslatorCommand(Const.RETURN_COMMAND, (state, lethalBotAI, message) =>
             {
-                return;
-            }
-            base.OnSignalTranslatorMessageReceived(message);
+                return true;
+            }));
         }
 
         /// <summary>

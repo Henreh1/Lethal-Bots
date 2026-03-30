@@ -5,8 +5,10 @@ using LethalBots.AI.AIStates;
 using LethalBots.Constants;
 using LethalBots.Enums;
 using LethalBots.Patches.NpcPatches;
+using LethalBots.Utils;
 using System.Linq;
 using TMPro;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -208,7 +210,7 @@ namespace LethalBots.Managers
 
                 EnumAIStates currentBotState = lethalBot.State.GetAIState();
                 if (lethalBot.OwnerClientId != localPlayer.actualClientId 
-                    || !lethalBot.IsFollowingTargetPlayer())
+                    || !lethalBot.IsFollowingLocalPlayer())
                 {
                     if (lethalBot.IsInSpecialAnimation())
                     {
@@ -230,6 +232,9 @@ namespace LethalBots.Managers
                         AllowSwearing = Plugin.Config.AllowSwearing.Value
                     });
 
+                    // We are following a human player, leave our current group or join theirs!
+                    GroupManager.Instance.CreateOrJoinGroupWithMembersAndSync(localPlayer, new PlayerControllerB[] { player });
+
                     lethalBot.SyncAssignTargetAndSetMovingTo(localPlayer);
 
                     if (Plugin.Config.ChangeSuitAutoBehaviour.Value)
@@ -239,6 +244,10 @@ namespace LethalBots.Managers
                 }
                 else if (currentBotState != EnumAIStates.SearchingForScrap)
                 {
+                    if (GroupManager.Instance.ArePlayersInSameGroup(player, localPlayer))
+                    {
+                        GroupManager.Instance.RemoveFromCurrentGroupAndSync(player);
+                    }
                     lethalBot.State = new SearchingForScrapState(lethalBot.State);
                     lethalBot.targetPlayer = null; // Clear target player since we are not following them anymore
                 }
@@ -280,7 +289,7 @@ namespace LethalBots.Managers
                 }
 
                 // To cut Discard_performed from triggering after this input
-                AccessTools.Field(typeof(PlayerControllerB), "timeSinceSwitchingSlots").SetValue(localPlayer, 0f);
+                PatchesUtil.timeSinceSwitchingSlotsField.Invoke(localPlayer) = 0f;
 
                 if (!lethalBot.AreHandsFree())
                 {

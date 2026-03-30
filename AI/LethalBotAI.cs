@@ -120,7 +120,6 @@ namespace LethalBots.AI
         public float TimeSinceTeleporting = 0f;
 
         public TimedTouchingGroundCheck IsTouchingGroundTimedCheck = null!;
-        public TimedAngleFOVWithLocalPlayerCheck AngleFOVWithLocalPlayerTimedCheck = null!;
 
         private EnumStateControllerMovement StateControllerMovement;
         private static InteractTrigger[] laddersInteractTrigger = null!;
@@ -305,7 +304,6 @@ namespace LethalBots.AI
 
             // Start timed calulation
             IsTouchingGroundTimedCheck = new TimedTouchingGroundCheck();
-            AngleFOVWithLocalPlayerTimedCheck = new TimedAngleFOVWithLocalPlayerCheck();
 
             // Spawn animation
             spawnAnimationCoroutine = BeginLethalBotSpawnAnimation(enumSpawnAnimation);
@@ -631,10 +629,10 @@ namespace LethalBots.AI
             // NEEDTOVALIDATE: I wonder that since bots now properly set their moveInputVector, if this is no longer needed.
             // Lethal Internship used to set it to Vector2(1.0, 0.0) I believe. I changed it to use the direction of the path the bot was following,
             // which fixed the movement animations.
-            if (StateControllerMovement == EnumStateControllerMovement.Free)
-            {
-                return;
-            }
+            //if (StateControllerMovement == EnumStateControllerMovement.Free)
+            //{
+            //    return;
+            //}
 
             // Do stuck detection
             if (NpcController.HasToMove || (agent.isActiveAndEnabled && !agent.isOnNavMesh))
@@ -740,11 +738,7 @@ namespace LethalBots.AI
                 }
             }
 
-            // TODO: Add more to this function!
-            // Essentially what I want to do is make a function that manages equipment the bot is holding.
-            // Such as flashlights, tzp-inhalent, using the stun-gun, flashbangs, etc.
-            // Right now the only equipment the bot uses are walkie-talkies, keys, shovels, knifes, and shotguns.
-            // Adding use of more equipment would be nice and add a more "human" aspect to them!
+            // Use the currently held item
             State.UseHeldItem();
         }
 
@@ -894,6 +888,30 @@ namespace LethalBots.AI
                     return targetPlayer != null 
                         && targetPlayer.isPlayerControlled
                         && !targetPlayer.isPlayerDead;
+                default:
+                    return false;
+            }
+        }
+
+        public bool IsFollowingLocalPlayer()
+        {
+            // Must be a valid player
+            if (targetPlayer == null
+                || targetPlayer != GameNetworkManager.Instance.localPlayerController
+                || !targetPlayer.isPlayerControlled
+                || targetPlayer.isPlayerDead)
+            {
+                return false;
+            }
+
+            switch (State.GetAIState())
+            {
+                case EnumAIStates.GetCloseToPlayer:
+                case EnumAIStates.ChillWithPlayer:
+                case EnumAIStates.JustLostPlayer:
+                case EnumAIStates.PlayerInCruiser:
+                case EnumAIStates.FetchingObject:
+                    return true;
                 default:
                     return false;
             }
@@ -1189,7 +1207,7 @@ namespace LethalBots.AI
                                 continue;
                             }
 
-                            Vector3 enemyViewVector = useEyePosition ? checkLOSToTarget.eye.position : checkLOSToTarget.transform.position;
+                            Vector3 enemyViewVector = useEyePosition && checkLOSToTarget.eye != null ? checkLOSToTarget.eye.position : checkLOSToTarget.transform.position;
                             if (!Physics.Linecast(previousNode + Vector3.up * headOffset, enemyViewVector + Vector3.up * 0.2f, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
                             {
                                 return true;
@@ -1336,7 +1354,7 @@ namespace LethalBots.AI
                                 continue;
                             }
 
-                            Vector3 enemyViewVector = useEyePosition ? checkLOSToTarget.eye.position : checkLOSToTarget.transform.position;
+                            Vector3 enemyViewVector = useEyePosition && checkLOSToTarget.eye != null ? checkLOSToTarget.eye.position : checkLOSToTarget.transform.position;
                             if (!Physics.Linecast(travelMidPoint + Vector3.up * headOffset, enemyViewVector + Vector3.up * 0.2f, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
                             {
                                 return true;
@@ -2284,6 +2302,7 @@ namespace LethalBots.AI
                 range = Mathf.Clamp(range, 0, 30);
             }
 
+            List<PlayerControllerB> groupMembers = GroupManager.Instance.GetOtherGroupMembers(NpcController.Npc);
             StartOfRound instanceSOR = StartOfRound.Instance;
             Transform thisLethalBotCamera = this.NpcController.Npc.gameplayCamera.transform;
             float currentClosestDistance = 1000f;
@@ -2292,7 +2311,10 @@ namespace LethalBots.AI
             {
                 PlayerControllerB player = instanceSOR.allPlayerScripts[i];
 
-                if (!player.isPlayerControlled || player.isPlayerDead || LethalBotManager.Instance.IsPlayerLethalBot(player))
+                if (!player.isPlayerControlled 
+                    || player.isPlayerDead 
+                    || (!groupMembers.Contains(player) 
+                        && LethalBotManager.Instance.IsPlayerLethalBot(player)))
                 {
                     continue;
                 }
@@ -2381,7 +2403,7 @@ namespace LethalBots.AI
                 }
 
                 // Obstructed
-                Vector3 viewPos = spawnedEnemy.eye?.position ?? positionEnemy;
+                Vector3 viewPos = spawnedEnemy.eye != null ? spawnedEnemy.eye.position : positionEnemy;
                 if (Physics.Linecast(thisLethalBotCamera.position, viewPos, instanceSOR.collidersAndRoomMaskAndDefault))
                 {
                     continue;
@@ -2584,7 +2606,7 @@ namespace LethalBots.AI
                     if ((enemyPos - headPos).sqrMagnitude <= dangerRange * dangerRange)
                     {
                         // Do the actual traceline check
-                        Vector3 viewPos = checkLOSToTarget.eye?.position ?? enemyPos;
+                        Vector3 viewPos = checkLOSToTarget.eye != null ? checkLOSToTarget.eye.position : enemyPos;
                         if (!Physics.Linecast(viewPos + Vector3.up * 0.25f, headPos, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
                         {
                             _areWeExposed = true;
@@ -3086,22 +3108,22 @@ namespace LethalBots.AI
                             }
 
                             // Get potential door positions
-                            Vector3? doorPos1 = GetOffsetLockPickerPosition(lockedDoor);
-                            Vector3? doorPos2 = GetOffsetLockPickerPosition(lockedDoor, true);
+                            Vector3 doorPos1 = GetOffsetLockPickerPosition(lockedDoor);
+                            Vector3 doorPos2 = GetOffsetLockPickerPosition(lockedDoor, true);
 
                             // Check path validity and distance for both positions
                             float? doorDistance1 = null;
                             float? doorDistance2 = null;
 
                             Plugin.LogDebug("[UnlockDoorIfNeeded] Checking path to front of door!");
-                            if (doorPos1.HasValue && IsValidPathToTarget(doorPos1.Value, true))
+                            if (IsValidPathToTarget(doorPos1, true))
                             {
                                 Plugin.LogDebug("[UnlockDoorIfNeeded] Successfuly found path to front of door!");
                                 doorDistance1 = pathDistance;
                             }
 
                             Plugin.LogDebug("[UnlockDoorIfNeeded] Checking path to back of door!");
-                            if (doorPos2.HasValue && IsValidPathToTarget(doorPos2.Value, true))
+                            if (IsValidPathToTarget(doorPos2, true))
                             {
                                 Plugin.LogDebug("[UnlockDoorIfNeeded] Successfuly found path to back of door!");
                                 doorDistance2 = pathDistance;
@@ -3257,7 +3279,7 @@ namespace LethalBots.AI
         /// <remarks>
         /// Ok, so this was ripped from the Masked AI <see cref="MaskedPlayerEnemy.UseElevator"/>, there may be bugs that need to be fixed
         /// </remarks>
-        /// <returns>true: the lethalBot is using or is waiting to use the elevator, else false</returns>
+        /// <returns><see langword="true"/>: the lethalBot is using or is waiting to use the elevator, else <see cref="false"/></returns>
         public bool UseElevator(bool goUp)
         {
             if (ElevatorScript == null || this.isOutside)
@@ -3915,7 +3937,7 @@ namespace LethalBots.AI
         public bool HasSpaceInInventory()
         {
             GrabbableObject[] itemSlots = NpcController.Npc.ItemSlots;
-            int inventorySize = GetInventorySize(itemSlots);
+            int inventorySize = GetInventorySize(NpcController.Npc, itemSlots);
             for (int i = 0; i < inventorySize; i++)
             {
                 GrabbableObject? item = itemSlots[i];
@@ -5479,8 +5501,11 @@ namespace LethalBots.AI
             if (!allowInteractTrigger && lethalBotController.currentTriggerInAnimationWith != null)
             {
                 lethalBotController.CancelSpecialTriggerAnimations();
-                StopCoroutine(useInteractTriggerCoroutine);
-                useInteractTriggerCoroutine = null;
+                if (useInteractTriggerCoroutine != null)
+                {
+                    StopCoroutine(useInteractTriggerCoroutine);
+                    useInteractTriggerCoroutine = null;
+                }
             }
 
             if ((bool)lethalBotController.inAnimationWithEnemy)
@@ -5696,7 +5721,11 @@ namespace LethalBots.AI
         /// <param name="newTarget">New <c>PlayerControllerB to set the owner of lethalBot to.</c></param>
         public void SyncAssignTargetAndSetMovingTo(PlayerControllerB newTarget)
         {
-            if (this.OwnerClientId != newTarget.actualClientId)
+            // If we are set to follow a bot, make sure our AI is on the correct client.
+            // NEEDTOVALIDATE: Should I even do this logic for bots? Would it be better to skip the ownership check for them?
+            LethalBotAI? isPlayerBot = LethalBotManager.Instance.GetLethalBotAI(newTarget);
+            ulong targetClientId = isPlayerBot != null ? isPlayerBot.OwnerClientId : newTarget.actualClientId;
+            if (this.OwnerClientId != targetClientId)
             {
                 // Changes the ownership of the lethalBot, on server and client directly
                 ChangeOwnershipOfEnemy(newTarget.actualClientId);
@@ -6331,18 +6360,19 @@ namespace LethalBots.AI
         /// <remarks>
         /// Only use this function if you don't want to check the bot's reserved item slots!
         /// </remarks>
-        /// <param name="cachedInventory">The bot's inventory. Only exists as an optimization!</param>
+        /// <param name="playerController">The player controller to check.</param>
+        /// <param name="cachedInventory">The player's inventory. Only exists as an optimization!</param>
         /// <returns></returns>
-        public int GetInventorySize(GrabbableObject[] cachedInventory = null!)
+        public static int GetInventorySize(PlayerControllerB playerController, GrabbableObject[] cachedInventory = null!)
         {
             // Minor optimization, lets me skip an index call!
-            cachedInventory ??= NpcController.Npc.ItemSlots;
+            cachedInventory ??= playerController.ItemSlots;
 
             // Support for reserved item slots!
             int inventorySize = cachedInventory.Length;
             if (Plugin.IsModReservedItemSlotCoreLoaded)
             {
-                return GetReservedInventorySize(inventorySize);
+                return GetReservedInventorySize(playerController, inventorySize);
             }
 
             return inventorySize;
@@ -6351,11 +6381,12 @@ namespace LethalBots.AI
         /// <summary>
         /// Helper function that only exists to stop my mod from attempting to load ReservedItemSlotCore if its not installed!
         /// </summary>
+        /// <param name="playerController"></param>
         /// <param name="inventorySize"></param>
         /// <returns></returns>
-        private int GetReservedInventorySize(int inventorySize)
+        private static int GetReservedInventorySize(PlayerControllerB playerController, int inventorySize)
         {
-            if (ReservedPlayerData.allPlayerData.TryGetValue(NpcController.Npc, out var playerData))
+            if (ReservedPlayerData.allPlayerData.TryGetValue(playerController, out var playerData))
             {
                 return Mathf.Min(playerData.reservedHotbarStartIndex, inventorySize); // Sanity check, use the smaller value!
             }
@@ -7173,6 +7204,7 @@ namespace LethalBots.AI
             }
 
             // OK, there is a 50 character limit for chat messages, so we need to split them up!
+            // FIXME: Allow users to change the char limit
             const int charLimit = 49;
             List<string> splitMessages = new List<string>();
 
@@ -8146,7 +8178,7 @@ namespace LethalBots.AI
             lethalBotController.setPositionOfDeadPlayer = true;
             lethalBotController.snapToServerPosition = false;
             lethalBotController.causeOfDeath = causeOfDeath;
-            AccessTools.Field(typeof(PlayerControllerB), "positionOfDeath").SetValue(lethalBotController, lethalBotController.transform.position);
+            PatchesUtil.positionOfDeathField.Invoke(lethalBotController) = lethalBotController.transform.position;
             if (spawnBody)
             {
                 lethalBotController.SpawnDeadBody((int)lethalBotController.playerClientId, bodyVelocity, (int)causeOfDeath, lethalBotController, deathAnimation, null, positionOffset);
@@ -8198,6 +8230,12 @@ namespace LethalBots.AI
             this.LethalBotIdentity.Voice.StopAudioFadeOut();
             this.State = new BrainDeadState(this);
             Plugin.LogDebug($"Ran kill lethalBot function for LOCAL client #{NetworkManager.LocalClientId}, lethalBot object: Bot #{this.BotId} {lethalBotController.playerUsername}");
+
+            // Remove bot from their group
+            if (base.IsOwner)
+            {
+                GroupManager.Instance.RemoveFromCurrentGroupAndSync(lethalBotController);
+            }
 
             // Compat with revive company mod
             if (Plugin.IsModReviveCompanyLoaded)
@@ -9278,44 +9316,6 @@ namespace LethalBots.AI
                                                out groundHit,
                                                2.5f,
                                                StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore);
-        }
-    }
-
-    public class TimedAngleFOVWithLocalPlayerCheck
-    {
-        private float angle;
-
-        private long timer = 50 * TimeSpan.TicksPerMillisecond;
-        private long lastTimeCalculate;
-
-        public float GetAngleFOVWithLocalPlayer(Transform localPlayerCameraTransform, Vector3 lethalBotBodyPos)
-        {
-            if (!NeedToRecalculate())
-            {
-                return angle;
-            }
-
-            CalculateAngleFOVWithLocalPlayer(localPlayerCameraTransform, lethalBotBodyPos);
-            return angle;
-        }
-
-        private bool NeedToRecalculate()
-        {
-            long elapsedTime = DateTime.Now.Ticks - lastTimeCalculate;
-            if (elapsedTime > timer)
-            {
-                lastTimeCalculate = DateTime.Now.Ticks;
-                return true;
-            }
-            else
-            {
-                return false;
-            }
-        }
-
-        private void CalculateAngleFOVWithLocalPlayer(Transform localPlayerCameraTransform, Vector3 lethalBotBodyPos)
-        {
-            angle = Vector3.Angle(localPlayerCameraTransform.forward, lethalBotBodyPos - localPlayerCameraTransform.position);
         }
     }
 }

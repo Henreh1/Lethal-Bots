@@ -73,6 +73,27 @@ namespace LethalBots.NetworkSerializers
             }
         }
 
+        public static void SerializeNullable<TReaderWriter>(BufferSerializer<TReaderWriter> serializer, ref NetworkBehaviourReference? value)
+            where TReaderWriter : IReaderWriter
+        {
+            bool hasValue = value.HasValue;
+            serializer.SerializeValue(ref hasValue);
+
+            if (hasValue)
+            {
+                NetworkBehaviourReference temp = value.GetValueOrDefault();
+                serializer.SerializeValue(ref temp);
+                if (serializer.IsReader)
+                {
+                    value = temp;
+                }
+            }
+            else if (serializer.IsReader)
+            {
+                value = null;
+            }
+        }
+
         public static void SerializeStringArray<TReaderWriter>(BufferSerializer<TReaderWriter> serializer, ref string[] value)
             where TReaderWriter : IReaderWriter
         {

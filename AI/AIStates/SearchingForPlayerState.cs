@@ -1,6 +1,7 @@
 ﻿using GameNetcodeStuff;
 using LethalBots.Constants;
 using LethalBots.Enums;
+using LethalBots.Managers;
 using System.Collections;
 using UnityEngine;
 
@@ -91,7 +92,7 @@ namespace LethalBots.AI.AIStates
                 ai.searchForScrap.StopSearch();
             }
 
-            // If we lose the player outside when returing just head back to the ship
+            // If we lose the player outside when returning just head back to the ship
             if (ai.HasScrapInInventory() && ai.isOutside)
             {
                 ai.State = new ReturnToShipState(this);
@@ -115,6 +116,9 @@ namespace LethalBots.AI.AIStates
                     IsLethalBotInside = npcController.Npc.isInsideFactory,
                     AllowSwearing = Plugin.Config.AllowSwearing.Value
                 });
+
+                // We are following a human player, leave our current group or join theirs!
+                GroupManager.Instance.CreateOrJoinGroupWithMembersAndSync(player, new PlayerControllerB[] { npcController.Npc });
 
                 // Assign to new target
                 ai.SyncAssignTargetAndSetMovingTo(player);

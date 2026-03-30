@@ -1,6 +1,7 @@
 ﻿using GameNetcodeStuff;
 using LethalBots.Constants;
 using LethalBots.Enums;
+using LethalBots.Managers;
 using System.Collections;
 using UnityEngine;
 
@@ -114,6 +115,8 @@ namespace LethalBots.AI.AIStates
                         ai.StopMoving();
                         ai.SyncTeleportLethalBot(entranceTeleportPos.Value, !entrance?.isEntranceToBuilding ?? !ai.isOutside, entrance);
                         targetLastKnownPosition = ai.targetPlayer.transform.position;
+                        ai.State = new GetCloseToPlayerState(this); // Just in case we enter around the same time as the player!
+                        return;
                     }
                     else
                     {
@@ -212,6 +215,7 @@ namespace LethalBots.AI.AIStates
         public override void PlayerHeard(Vector3 noisePosition)
         {
             // Go towards the sound heard
+            lookingAroundTimer = 0f;
             this.targetLastKnownPosition = noisePosition;
             ai.LethalBotIdentity.Voice.TryPlayVoiceAudio(new PlayVoiceParameters()
             {
@@ -227,10 +231,11 @@ namespace LethalBots.AI.AIStates
             });
         }
 
-        // We are following a player, these messages mean nothing to us!
-        public override void OnSignalTranslatorMessageReceived(string message)
+        /// <inheritdoc cref="AIState.RegisterSignalTranslatorCommands"/>
+        public static new void RegisterSignalTranslatorCommands()
         {
-            return;
+            // We are following a player, these messages mean nothing to us!
+            SignalTranslatorCommandsManager.RegisterIgnoreDefaultForState<JustLostPlayerState>();
         }
 
         public override string GetBillboardStateIndicator()

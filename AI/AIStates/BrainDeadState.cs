@@ -55,6 +55,12 @@ namespace LethalBots.AI.AIStates
                 LethalBotManager.Instance.RemovePlayerFromLootTransferListAndSync(npcController.Npc);
             }
 
+            // We are dead, remove ourself from the group
+            if (GroupManager.Instance.IsPlayerInGroup(npcController.Npc))
+            {
+                GroupManager.Instance.RemoveFromCurrentGroupAndSync(npcController.Npc);
+            }
+
             // Check if every human player is dead,
             // and if our fellow players and bots are on the ship
             bool allLivingPlayersOnShip = LethalBotManager.Instance.AreAllPlayersOnTheShip();
@@ -108,16 +114,18 @@ namespace LethalBots.AI.AIStates
             }
         }
 
-        // We are dead, these messages mean nothing to us!
-        public override void OnSignalTranslatorMessageReceived(string message)
+        /// <inheritdoc cref="AIState.RegisterChatCommands"/>
+        public static new void RegisterChatCommands()
         {
-            return;
+            // We are dead, these messages mean nothing to us!
+            ChatCommandsManager.RegisterIgnoreDefaultForState<BrainDeadState>();
         }
 
-        // We are dead, these messages mean nothing to us!
-        public override void OnPlayerChatMessageReceived(string message, PlayerControllerB playerWhoSentMessage, bool isVoice)
+        /// <inheritdoc cref="AIState.RegisterSignalTranslatorCommands"/>
+        public static new void RegisterSignalTranslatorCommands()
         {
-            return;
+            // We are dead, these messages mean nothing to us!
+            SignalTranslatorCommandsManager.RegisterIgnoreDefaultForState<BrainDeadState>();
         }
     }
 }

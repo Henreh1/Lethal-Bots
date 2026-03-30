@@ -2,6 +2,7 @@
 using LethalBots.Constants;
 using LethalBots.Enums;
 using LethalBots.Managers;
+using LethalBots.Utils.Helpers;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -14,7 +15,7 @@ namespace LethalBots.AI.AIStates
     public class TransferLootState : AIState
     {
         private float waitTimer;
-        private List<EntranceTeleport> checkedEntrances = new List<EntranceTeleport>();
+        private HashSet<EntranceTeleport> checkedEntrances = new HashSet<EntranceTeleport>();
 
         public TransferLootState(AIState oldState) : base(oldState)
         {
@@ -230,14 +231,13 @@ namespace LethalBots.AI.AIStates
             });
         }
 
-        public override void OnPlayerChatMessageReceived(string message, PlayerControllerB playerWhoSentMessage, bool isVoice)
+        /// <inheritdoc cref="AIState.RegisterChatCommands"/>
+        public static new void RegisterChatCommands()
         {
-            // We are already transferring loot, no need to respond to transfer loot messages
-            if (message.Contains("transfer loot"))
+            ChatCommandsManager.RegisterCommandForState<TransferLootState>(new ChatCommand(Const.TRANSFER_LOOT_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
             {
-                return;
-            }
-            base.OnPlayerChatMessageReceived(message, playerWhoSentMessage, isVoice);
+                return true; // We are already transferring loot, no need to respond to transfer loot messages
+            }));
         }
 
         /// <remarks>

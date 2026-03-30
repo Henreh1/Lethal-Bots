@@ -3,7 +3,9 @@ using LethalBots.AI.AIStates;
 using LethalBots.Constants;
 using LethalBots.Enums;
 using LethalBots.Managers;
+using LethalBots.NetworkSerializers;
 using LethalBots.Patches.EnemiesPatches;
+using LethalBots.Utils.Helpers;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -12,7 +14,9 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Unity.Netcode;
 using UnityEngine;
+using static UnityEngine.InputSystem.InputRemoting;
 using Random = UnityEngine.Random;
 
 namespace LethalBots.AI
@@ -22,7 +26,7 @@ namespace LethalBots.AI
     /// </summary>
     public abstract class AIState
     {
-        protected LethalBotAI ai;
+        public LethalBotAI ai { protected set; get; }
 
         protected AIState? previousAIState;
         public EnumAIStates? previousState { protected set; get; }
@@ -42,6 +46,11 @@ namespace LethalBots.AI
         }
 
         /// <summary>
+        /// Lets other states and chat commands read this normally protected value.
+        /// </summary>
+        public EnemyAI? CurrentEnemy { protected set; get; }
+
+        /// <summary>
         /// <c>NpcController</c> from the <c>LethalBotAI</c>
         /// </summary>
         protected NpcController npcController;
@@ -54,10 +63,10 @@ namespace LethalBots.AI
         }
         protected AIStateInfo previousStateUpdate;
 
+        protected CountdownTimer useNoiseMakerCooldown = new CountdownTimer();
         protected Coroutine? panikCoroutine;
         protected Coroutine? safePathCoroutine;
         protected Coroutine? lookingAroundCoroutine;
-        protected EnemyAI? currentEnemy;
         protected Vector3 safePathPos; // The closest point to targetShipPos that is safe
         protected CancellationTokenSource? pathfindCancellationToken = null; // For use in the async danger pathfinder
         protected EntranceTeleport? targetEntrance = null;
@@ -77,7 +86,7 @@ namespace LethalBots.AI
             this.TargetItem = oldState.TargetItem;
 
             this.panikCoroutine = oldState.panikCoroutine;
-            this.currentEnemy = oldState.currentEnemy;
+            this.CurrentEnemy = oldState.CurrentEnemy;
 
         }
 
@@ -208,87 +217,107 @@ namespace LethalBots.AI
         }
 
         /// <summary>
-        /// Called when the bot recevies a message from the signal translator!
+        /// Sets up the default chat commands for this state.
         /// </summary>
         /// <remarks>
-        /// WARNING: All messages are forced into lower case!
+        /// This should be called in <see cref="LethalBotManager.RegisterDefaultCommands"/> 
+        /// and <see cref="LethalBotManager.RegisterCustomCommands"/>
         /// </remarks>
-        /// <param name="message"></param>
-        public virtual void OnSignalTranslatorMessageReceived(string message)
+        public static void RegisterChatCommands()
         {
-            if (message == "return")
+            // If we were told about an active Jester, better get the hell out of there!
+            ChatCommandsManager.RegisterGlobalCommand(new ChatCommand(Const.JESTER_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
             {
-                ai.State = new ReturnToShipState(this);
-            }
-            else if (message == "jester")
-            {
-                if (ai.isOutside)
+                if (lethalBotAI.isOutside)
                 {
-                    return;
+                    return false;
                 }
-                EnemyAI? enemyAI = FindNearbyJester();
+                EnemyAI? enemyAI = state.FindNearbyJester();
                 if (enemyAI == null)
                 {
-                    return;
+                    return false;
                 }
-                ai.State = new PanikState(this, enemyAI);
-            }
-        }
+                lethalBotAI.State = new PanikState(state, enemyAI);
+                return true;
+            }));
 
-        /// <summary>
-        /// Called when the bot receives a chat message. This can be from a player or bot!
-        /// You can use <see cref="Managers.LethalBotManager.IsPlayerLethalBot(PlayerControllerB)"/> to check who is a bot or not!
-        /// </summary>
-        /// <remarks>
-        /// WARNING: All messages are forced into lower case!<br/>
-        /// NOTE: This is not called for messages sent by the bot itself!
-        /// </remarks>
-        /// <param name="message">The message we received</param>
-        /// <param name="playerWhoSentMessage">The player who sent the message!</param>
-        /// <param name="isVoice">Was the message spoken or was typed out in the chat?</param>
-        public virtual void OnPlayerChatMessageReceived(string message, PlayerControllerB playerWhoSentMessage, bool isVoice) 
-        {
-            if (message.Contains("jester"))
-            {
-                if (ai.isOutside)
-                {
-                    return;
-                }
-                EnemyAI? enemyAI = FindNearbyJester();
-                if (enemyAI == null)
-                {
-                    return;
-                }
-                ai.State = new PanikState(this, enemyAI);
-            }
             // One of us was asked to be the mission controller!
             // NOTE: playerWhoSentMessage should never be null here, but other modders could call this function directly with a null value!
-            else if (message.Contains("man the ship"))
+            ChatCommandsManager.RegisterGlobalCommand(new ChatCommand(Const.MAN_THE_SHIP_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
             {
-                if (IsBotBeingAddressed(playerWhoSentMessage, out var lethalBotController))
+                if (state.IsBotBeingAddressed(playerWhoSentMessage, out var lethalBotController))
                 {
                     // Yay, we found a vaild bot, make it the mission controller!
-                    ai.SendChatMessage("Alright, I'll head to the terminal and watch over the crew!");
+                    lethalBotAI.SendChatMessage("Alright, I'll head to the terminal and watch over the crew!");
                     LethalBotManager.Instance.MissionControlPlayer = lethalBotController;
-                    ai.State = new MissionControlState(this); // Its fine to set the state here directly, if we are not on the ship, the state will handle moving to the ship!
+                    lethalBotAI.State = new MissionControlState(state); // Its fine to set the state here directly, if we are not on the ship, the state will handle moving to the ship!
                 }
-                return;
-            }
+                return true;
+            }));
+
             // One of us was asked to transfer loot!
-            else if (message.Contains("transfer loot"))
+            ChatCommandsManager.RegisterGlobalCommand(new ChatCommand(Const.TRANSFER_LOOT_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
             {
-                if (IsBotBeingAddressed(playerWhoSentMessage, out var lethalBotController))
+                if (state.IsBotBeingAddressed(playerWhoSentMessage, out var lethalBotController))
                 {
                     // Yay, we found a vaild bot, make it transfer loot!
-                    ai.SendChatMessage("I'll start transferring loot to the ship right away!");
+                    lethalBotAI.SendChatMessage("I'll start transferring loot to the ship right away!");
                     if (!LethalBotManager.Instance.LootTransferPlayers.Contains(lethalBotController))
                     {
                         LethalBotManager.Instance.AddPlayerToLootTransferListAndSync(lethalBotController);
                     }
-                    ai.State = new TransferLootState(this);
+                    lethalBotAI.State = new TransferLootState(state);
                 }
-                return;
-            }
+                return true;
+            }));
+
+            // A player asked to join our group
+            ChatCommandsManager.RegisterGlobalCommand(new ChatCommand(Const.JOIN_GROUP_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
+            {
+                if (state.IsBotBeingAddressed(playerWhoSentMessage, out var lethalBotController))
+                {
+                    // Yay, we found a vaild bot, have the local player join their group!
+                    int groupID = GroupManager.Instance.GetGroupId(lethalBotController);
+                    if (groupID != GroupManager.INVALID_GROUP_INDEX 
+                    && !GroupManager.Instance.ArePlayersInSameGroup(lethalBotController, playerWhoSentMessage))
+                    {
+                        lethalBotAI.SendChatMessage($"Yes, you may join our group!");
+                        GroupManager.Instance.AddToGroupAndSync(groupID, playerWhoSentMessage);
+                    }
+                }
+                return true;
+            }));
+        }
+
+        /// <summary>
+        /// Sets up the default signal translator commands for this state.
+        /// </summary>
+        /// <remarks>
+        /// This should be called in <see cref="LethalBotManager.RegisterDefaultCommands"/> 
+        /// and <see cref="LethalBotManager.RegisterCustomCommands"/>
+        /// </remarks>
+        public static void RegisterSignalTranslatorCommands()
+        {
+            SignalTranslatorCommandsManager.RegisterGlobalCommand(new SignalTranslatorCommand(Const.RETURN_COMMAND, (state, lethalBotAI, message) => 
+            {
+                lethalBotAI.State = new ReturnToShipState(state);
+                return true;
+            }));
+
+            SignalTranslatorCommandsManager.RegisterGlobalCommand(new SignalTranslatorCommand(Const.JESTER_COMMAND, (state, lethalBotAI, message) =>
+            {
+                if (lethalBotAI.isOutside)
+                {
+                    return true;
+                }
+                EnemyAI? enemyAI = state.FindNearbyJester();
+                if (enemyAI == null)
+                {
+                    return true;
+                }
+                lethalBotAI.State = new PanikState(state, enemyAI);
+                return true;
+            }));
         }
 
         /// <summary>
@@ -301,7 +330,7 @@ namespace LethalBots.AI
         /// </remarks>
         /// <param name="player">The player to check for bot interaction. Cannot be null.</param>
         /// <returns>true if the player is addressing this bot and the bot is eligible to respond; otherwise, false.</returns>
-        protected bool IsBotBeingAddressed(PlayerControllerB player, out PlayerControllerB? lethalBotController)
+        public bool IsBotBeingAddressed(PlayerControllerB player, [NotNullWhen(true)] out PlayerControllerB? lethalBotController)
         {
             // Make sure the player is valid
             lethalBotController = null;
@@ -371,17 +400,56 @@ namespace LethalBots.AI
             return null;
         }
 
+        /// <summary>
+        /// Helper function that returns the position we want to look at for the set <see cref="LookAtTarget.lookAtSubject"/>
+        /// </summary>
+        /// <param name="lookAtTarget">The look at target to refrence</param>
+        /// <param name="subject">The network object we want to look at</param>
+        /// <param name="ourController">The bot controller, provided for optimization reasons</param>
+        /// <returns></returns>
+        public virtual Vector3? SelectSubjectTargetPoint(LookAtTarget lookAtTarget, NetworkObject? subject, PlayerControllerB ourController)
+        {
+            // Change where we are aiming based on the given network object
+            if (subject == null)
+            {
+                return null;
+            }
+            Vector3? targetPos = null;
+            if (subject.TryGetComponent<EnemyAI>(out var enemyAI))
+            {
+                if (enemyAI.eye != null)
+                {
+                    targetPos = enemyAI.eye.transform.position;
+                }
+                else
+                {
+                    targetPos = enemyAI.transform.position;
+                }
+            }
+            // For players, look at their head!
+            else if (subject.TryGetComponent<PlayerControllerB>(out var player))
+            {
+                targetPos = player.gameplayCamera.transform.position;
+            }
+            // No special logic for everything else
+            else
+            {
+                targetPos = subject.transform.position;
+            }
+            return targetPos;
+        }
+
         /// <remarks>
         /// Helper function that only avoids a single entrance!<br/>
-        /// <inheritdoc cref="FindClosestEntrance(Vector3?, List{EntranceTeleport}?)"></inheritdoc>
+        /// <inheritdoc cref="FindClosestEntrance(Vector3?, HashSet{EntranceTeleport}?)"></inheritdoc>
         /// </remarks>
-        /// <inheritdoc cref="FindClosestEntrance(Vector3?, List{EntranceTeleport}?)"></inheritdoc>
+        /// <inheritdoc cref="FindClosestEntrance(Vector3?, HashSet{EntranceTeleport}?)"></inheritdoc>
         protected virtual EntranceTeleport? FindClosestEntrance(EntranceTeleport? entranceToAvoid, Vector3? shipPos = null)
         {
-            List<EntranceTeleport>? entrancesToAvoid;
+            HashSet<EntranceTeleport>? entrancesToAvoid;
             if (entranceToAvoid != null)
             {
-                entrancesToAvoid = new List<EntranceTeleport>() { entranceToAvoid };
+                entrancesToAvoid = new HashSet<EntranceTeleport>() { entranceToAvoid };
             }
             else
             {
@@ -398,7 +466,7 @@ namespace LethalBots.AI
         /// We also have to check if the exit position lets the bot reach the ship. Offence is a good example where the bots can't path down the fire exit!
         /// </remarks>
         /// <returns>The closest entrance or else null</returns>
-        protected virtual EntranceTeleport? FindClosestEntrance(Vector3? shipPos = null, List<EntranceTeleport>? entrancesToAvoid = null)
+        protected virtual EntranceTeleport? FindClosestEntrance(Vector3? shipPos = null, HashSet<EntranceTeleport>? entrancesToAvoid = null)
         {
             bool shouldOnlyUseFrontEntrance = ShouldOnlyUseFrontEntrance();
             bool isClosestEntranceFront = false;
@@ -709,8 +777,6 @@ namespace LethalBots.AI
             {
                 // TODO: Change this to be better with longer day mods.
                 // I mean it works partially, but could be better!
-                //DayMode dayMode = timeOfDay.GetDayPhase(timeOfDay.currentDayTime / timeOfDay.totalTime);
-                //(dayMode == DayMode.Sundown || dayMode == DayMode.Midnight)
                 if (timeOfDay.normalizedTimeOfDay > Plugin.Config.ReturnToShipTime
                     || timeOfDay.votesForShipToLeaveEarly >= LethalBotManager.Instance.AllRealPlayersCount 
                     || timeOfDay.shipLeavingAlertCalled)
@@ -880,6 +946,22 @@ namespace LethalBots.AI
                                     // or else it will be mad at us after a while and would try to kill us!
                                     ai.DropItem();
                                 }
+                            }
+                        }
+                    }
+                }
+                else if (heldItem is NoisemakerProp noisemakerProp)
+                {
+                    if (!useNoiseMakerCooldown.HasStarted() || useNoiseMakerCooldown.Elapsed())
+                    {
+                        // For now, hard code this!
+                        useNoiseMakerCooldown.Start(Random.Range(5f, 25f));
+                        if (!ai.CheckProximityForEyelessDogs())
+                        {
+                            noisemakerProp.UseItemOnClient(true);
+                            if (noisemakerProp.itemProperties.holdButtonUse)
+                            {
+                                noisemakerProp.UseItemOnClient(false); // HACKHACK: Fake release the button!
                             }
                         }
                     }
@@ -1216,7 +1298,7 @@ namespace LethalBots.AI
                             if (dangerRange.HasValue && (enemyPos - nodePos).sqrMagnitude <= dangerRange * dangerRange)
                             {
                                 // Do the actual traceline check
-                                Vector3 viewPos = checkLOSToTarget.eye?.position ?? enemyPos;
+                                Vector3 viewPos = checkLOSToTarget.eye != null ? checkLOSToTarget.eye.position : enemyPos;
                                 if (!Physics.Linecast(viewPos + Vector3.up * 0.2f, simulatedHead, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
                                 {
                                     isNodeSafe = false;
@@ -1516,7 +1598,8 @@ namespace LethalBots.AI
         }
 
         /// <summary>
-        /// Simple function that checks if the give <paramref name="item"/> is null or not<br/>
+        /// Simple function that checks if the given <paramref name="item"/> should be dropped by the bot.<br/>
+        /// By default, this will return false for items in the bot's loadout<br/>
         /// This was designed to be overridden by states that want to drop specific items only!
         /// </summary>
         /// <remarks>

@@ -6,7 +6,7 @@
     <AssemblyName>LethalBots</AssemblyName>
     <Product>LethalBots</Product>
     <!-- Change to whatever version you're currently on. This will be used by tcli when building our Thunderstore package. -->
-    <Version>3.0.1</Version>
+    <Version>4.0.0</Version>
   </PropertyGroup>
 
   <!-- Project Properties -->
@@ -137,6 +137,9 @@
     <Reference Include="FuckYouMod">
       <HintPath>lib\mods\MoreEmotes1.3.3.dll</HintPath>
     </Reference>
+	<Reference Include="GeneralImprovements">
+		<HintPath>lib\mods\GeneralImprovements.dll</HintPath>
+	</Reference>
     <Reference Include="LethalPhones">
       <HintPath>lib\mods\LethalPhones.dll</HintPath>
     </Reference>
@@ -164,14 +167,17 @@
 	<Reference Include="LethalInternship">
 	  <HintPath>lib\mods\LethalInternship.dll</HintPath>  
 	</Reference>
-	<Reference Include="PySpeech">
-	  <HintPath>lib\mods\PySpeech.dll</HintPath>
+	<Reference Include="SpeechRecognitionAPI">
+	  <HintPath>lib\mods\SpeechRecognitionAPI.dll</HintPath>
 	</Reference>
 	<Reference Include="Zaprillator">
 	  <HintPath>lib\mods\Zaprillator.dll</HintPath>
 	</Reference>
 	<Reference Include="LCVR">
 	  <HintPath>lib\mods\LCVR.dll</HintPath>
+	</Reference>
+	<Reference Include="LethalEmotesAPI">
+		<HintPath>lib\mods\LethalEmotesAPI.dll</HintPath>
 	</Reference>
 	<Reference Include="ReservedItemSlotCore">
 	  <HintPath>lib\mods\ReservedItemSlotCore.dll</HintPath>

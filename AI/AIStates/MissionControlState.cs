@@ -6,6 +6,7 @@ using LethalBots.Managers;
 using LethalBots.Patches.ModPatches.LethalPhones;
 using LethalBots.Patches.NpcPatches;
 using LethalBots.Utils;
+using LethalBots.Utils.Helpers;
 using LethalLib.Modules;
 using Scoops.gameobjects;
 using Scoops.misc;
@@ -128,6 +129,13 @@ namespace LethalBots.AI.AIStates
                 FindWeapon();
                 grabbedLoadout = false;
             }
+
+            // If we are the mission controller, we cannot be in a group
+            if (LethalBotManager.Instance.MissionControlPlayer == npcController.Npc 
+                && GroupManager.Instance.IsPlayerInGroup(npcController.Npc))
+            {
+                GroupManager.Instance.RemoveFromCurrentGroupAndSync(npcController.Npc);
+            }
             base.OnEnterState();
         }
 
@@ -160,6 +168,12 @@ namespace LethalBots.AI.AIStates
             if (LethalBotManager.Instance.LootTransferPlayers.Contains(npcController.Npc))
             {
                 LethalBotManager.Instance.RemovePlayerFromLootTransferListAndSync(npcController.Npc);
+            }
+
+            // If we are the mission controller, we cannot be in a group
+            if (GroupManager.Instance.IsPlayerInGroup(npcController.Npc))
+            {
+                GroupManager.Instance.RemoveFromCurrentGroupAndSync(npcController.Npc);
             }
 
             // Its kinda hard to be the mission controller if we are not on the ship!
@@ -277,8 +291,6 @@ namespace LethalBots.AI.AIStates
                 else if ((playerRequestLeave || LethalBotManager.Instance.AreAllHumanPlayersDead())
                 && LethalBotManager.Instance.AreAllPlayersOnTheShip())
                 {
-                    // HACKHACK: We fake pulling the ship lever to leave early, we will make the bot actually
-                    // use the ship lever once I fix the interact trigger object code later
                     if (leavePlanetTimer > Const.LETHAL_BOT_TIMER_LEAVE_PLANET)
                     {
                         if (GetOffTerminal())
@@ -365,6 +377,11 @@ namespace LethalBots.AI.AIStates
                             ai.State = new FetchingObjectState(this, weapon);
                             return;
                         }
+                        else
+                        {
+                            // Give up on that weapon, we have no room!
+                            weapon = null;
+                        }
                     }
                     // If our weapon uses batteries and its low on battery, we should charge it!
                     else if (!LethalBotAI.IsItemPowered(weapon))
@@ -436,6 +453,11 @@ namespace LethalBots.AI.AIStates
                         LethalBotAI.DictJustDroppedItems.Remove(walkieTalkie); // HACKHACK: Since the walkie-talkie is on the ship, we clear the just dropped item timer!
                         ai.State = new FetchingObjectState(this, walkieTalkie);
                         return;
+                    }
+                    else
+                    {
+                        // Give up on that walkie, we have no room!
+                        walkieTalkie = null;
                     }
                 }
                 // If our walkie-talkie is low on battery, we should charge it!
@@ -597,11 +619,11 @@ namespace LethalBots.AI.AIStates
                     string messageToSend = GetNextMessageToSend();
                     if (!string.IsNullOrWhiteSpace(messageToSend))
                     {
-                        yield return SendCommandToTerminal($"transmit {messageToSend}");
+                        yield return SendCommandToTerminal(string.Format(TerminalConst.STRING_TRANSMIT_COMMAND, messageToSend));
                     }
                 }
 
-                // Update out "vision" to the targeted player on the monitor
+                // Update our "vision" to the targeted player on the monitor
                 targetedPlayer = StartOfRound.Instance.mapScreen.targetedPlayer;
                 if (playersRequstedTeleport.TryDequeue(out PlayerControllerB playerControllerB))
                 {
@@ -708,6 +730,7 @@ namespace LethalBots.AI.AIStates
 
                 // Make sure that in the period we were waiting to teleport the player or body
                 // that they still need to be teleported!
+                // NOTE: This also helps the bot not teleport the wrong player if someone changes who is being monitored.
                 PlayerControllerB playerOnMonitor = StartOfRound.Instance.mapScreen.targetedPlayer;
                 if (playerOnMonitor != null && !skipPostCheck)
                 {
@@ -722,7 +745,9 @@ namespace LethalBots.AI.AIStates
                     }
                 }
 
+                // FIXME: We need to hop off the terminal in order to push the teleport button!
                 ShipTeleporter.PressTeleportButtonOnLocalClient();
+                //ShipTeleporter.buttonTrigger.Interact(npcController.Npc.thisPlayerBody);
             }
         }
 
@@ -897,7 +922,7 @@ namespace LethalBots.AI.AIStates
         /// This queues a message to be sent by the bot using the signal translator!
         /// </summary>
         /// <param name="message"></param>
-        private void SendMessageUsingSignalTranslator(string message, MessagePriority priority = MessagePriority.Low)
+        public void SendMessageUsingSignalTranslator(string message, MessagePriority priority = MessagePriority.Low)
         {
             if (!string.IsNullOrWhiteSpace(message))
             {
@@ -1310,6 +1335,8 @@ namespace LethalBots.AI.AIStates
                     return "Old Bird";
                 case "Bunker Spider":
                     return "Spider";
+                case "ForestGiant":
+                    return "Giant";
                 default:
                     return defaultName;
             }
@@ -1390,7 +1417,6 @@ namespace LethalBots.AI.AIStates
                 return false;
             }
 
-            // TODO: Put this behind a config option incase players don't want this!
             // NEEDTOVALIDATE: Should I make it where the bot waits for the player to spin
             // or shake their camera instead?
             if (!player.isInElevator && !player.isInHangarShipRoom)
@@ -1424,6 +1450,15 @@ namespace LethalBots.AI.AIStates
                             {
                                 // Is the old bird targeting them?
                                 Transform? targetTransform = oldBird.targetedThreat?.threatScript?.GetThreatTransform();
+                                if (player.transform == targetTransform)
+                                {
+                                    return true;
+                                }
+                            }
+                            else if (spawnedEnemy is BaboonBirdAI baboonHawk)
+                            {
+                                // If the babooon hawk targeting them
+                                Transform? targetTransform = baboonHawk.focusedThreat?.threatScript?.GetThreatTransform();
                                 if (player.transform == targetTransform)
                                 {
                                     return true;
@@ -1868,89 +1903,126 @@ namespace LethalBots.AI.AIStates
             }
         }
 
-        // Allow players to request specific monitoring from the bot
-        public override void OnPlayerChatMessageReceived(string message, PlayerControllerB playerWhoSentMessage, bool isVoice)
+        /// <inheritdoc cref="AIState.RegisterChatCommands"/>
+        public static new void RegisterChatCommands()
         {
-            if (playerWhoSentMessage != null)
+            // We don't care about the default commands as the Mission Controller!
+            ChatCommandsManager.RegisterIgnoreDefaultForState<MissionControlState>();
+
+            // Someone requested that we start the ship!
+            ChatCommandsManager.RegisterCommandForState<MissionControlState>(new ChatCommand(Const.START_THE_SHIP_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
             {
-                if (message.Contains("start the ship"))
+                // Make sure the sender is valid!
+                if (playerWhoSentMessage == null)
                 {
-                    // Now we need to do some safety checks first. Only the host can tell the bot to pull the lever.
-                    // Unless they are dead!
-                    PlayerControllerB? hostPlayer = LethalBotManager.HostPlayerScript;
-                    if (hostPlayer == null
-                        || hostPlayer == playerWhoSentMessage
-                        || hostPlayer.isPlayerDead 
-                        || !Plugin.Config.StartShipChatCommandProtection.Value)
+                    return true;
+                }
+
+                // Now we need to do some safety checks first. Only the host can tell the bot to pull the lever.
+                // Unless they are dead!
+                MissionControlState missionControlState = (MissionControlState)state; // We have bigger problems if this cast fails!
+                PlayerControllerB? hostPlayer = LethalBotManager.HostPlayerScript;
+                if (hostPlayer == null
+                    || hostPlayer == playerWhoSentMessage
+                    || hostPlayer.isPlayerDead
+                    || !Plugin.Config.StartShipChatCommandProtection.Value)
+                {
+                    if (LethalBotManager.AreWeAtTheCompanyBuilding())
                     {
-                        if (LethalBotManager.AreWeAtTheCompanyBuilding())
-                        {
-                            ai.SendChatMessage($"Affirmative, I will start the ship in {Const.LETHAL_BOT_TIMER_LEAVE_PLANET} seconds and once everyone is onboard.");
-                        }
-                        else
-                        { 
-                            ai.SendChatMessage($"Affirmative, I will start the ship in {Const.LETHAL_BOT_TIMER_LEAVE_PLANET} seconds."); 
-                        }
-                        playerRequestLeave = true;
+                        lethalBotAI.SendChatMessage($"Affirmative, I will start the ship in {Const.LETHAL_BOT_TIMER_LEAVE_PLANET} seconds and once everyone is onboard.");
                     }
                     else
                     {
-                        ai.SendChatMessage($"Sorry {playerWhoSentMessage.playerUsername}, but only the captain can tell me to start the ship!");
+                        lethalBotAI.SendChatMessage($"Affirmative, I will start the ship in {Const.LETHAL_BOT_TIMER_LEAVE_PLANET} seconds.");
                     }
+                    missionControlState.playerRequestLeave = true;
                 }
-                // A player is requesting we monitor them
-                else if (message.Contains("request monitoring"))
+                else
                 {
-                    ai.SendChatMessage($"Roger, I will only monitor you, {playerWhoSentMessage.playerUsername}.");
-                    monitoredPlayer = playerWhoSentMessage;
+                    lethalBotAI.SendChatMessage($"Sorry {playerWhoSentMessage.playerUsername}, but only the captain can tell me to start the ship!");
                 }
-                // The player wants to stop being monitored
-                else if (monitoredPlayer == playerWhoSentMessage && message.Contains("clear monitoring"))
-                {
-                    ai.SendChatMessage("Understood, I will resume monitoring all crew members.");
-                    monitoredPlayer = null;
-                }
-                // This player wants to be teleported back to the ship
-                else if (message.Contains("request teleport"))
-                {
-                    // Only add new requests!
-                    if (!playersRequstedTeleport.Contains(playerWhoSentMessage))
-                    { 
-                        ai.SendChatMessage("Hold on, I will teleport you back to the ship as soon as possible.");
-                        playersRequstedTeleport.Enqueue(playerWhoSentMessage); 
-                    }
-                }
-                // A player is asking us to get off the terminal,
-                // probably so they can use it.
-                else if (message.Contains("hop off the terminal"))
-                {
-                    if (!playerRequestedTerminal)
-                    { 
-                        ai.SendChatMessage("Understood, I am leaving the terminal now."); 
-                    }
-                    playerRequestedTerminal = true;
-                    waitForTerminalTime = 0f;
-                }
-                // A player is asking us to transmit a message
-                else if (message.Contains(Const.TRANSMIT_KEYWORD))
-                {
-                    // First we need to extract the message!
-                    // FIXME: There has to be a better way to do this!
-                    int transmitIndex = message.IndexOf(Const.TRANSMIT_KEYWORD) + Const.TRANSMIT_KEYWORD_LENGTH;
-                    string messageToTransmit = message.Substring(transmitIndex).Trim();
-                    ai.SendChatMessage($"Alright, I will relay, {messageToTransmit} to the rest of the crew.");
+                return true;
+            }));
 
-                    // Queue the message to be sent!
-                    SendMessageUsingSignalTranslator(messageToTransmit, MessagePriority.High);
+            // A player is requesting we monitor them
+            ChatCommandsManager.RegisterCommandForState<MissionControlState>(new ChatCommand(Const.REQUEST_MONITORING_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
+            {
+                MissionControlState missionControlState = (MissionControlState)state; // We have bigger problems if this cast fails!
+                lethalBotAI.SendChatMessage($"Roger, I will only monitor you, {playerWhoSentMessage.playerUsername}.");
+                missionControlState.monitoredPlayer = playerWhoSentMessage;
+                return true;
+            }));
+
+            // The player wants to stop being monitored
+            ChatCommandsManager.RegisterCommandForState<MissionControlState>(new ChatCommand(Const.CLEAR_MONITORING_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
+            {
+                MissionControlState missionControlState = (MissionControlState)state; // We have bigger problems if this cast fails!
+                if (missionControlState.monitoredPlayer != playerWhoSentMessage)
+                {
+                    return true; // Ignore request cancellations from other players!
                 }
-            }
+                lethalBotAI.SendChatMessage("Understood, I will resume monitoring all crew members.");
+                missionControlState.monitoredPlayer = null;
+                return true;
+            }));
+
+            // This player wants to be teleported back to the ship
+            ChatCommandsManager.RegisterCommandForState<MissionControlState>(new ChatCommand(Const.REQUEST_TELEPORT_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
+            {
+                // Make sure we have a teleporter
+                if (ShipTeleporter == null)
+                {
+                    // Remind the player on their poor decision to not buy a teleporter.......
+                    lethalBotAI.SendChatMessage("What do you mean, \"TELEPORT ME\"! We don't own a teleporter!");
+                    return true;
+                }
+
+                // Only add new requests!
+                MissionControlState missionControlState = (MissionControlState)state; // We have bigger problems if this cast fails!
+                if (!missionControlState.playersRequstedTeleport.Contains(playerWhoSentMessage))
+                {
+                    lethalBotAI.SendChatMessage("Hold on, I will teleport you back to the ship as soon as possible.");
+                    missionControlState.playersRequstedTeleport.Enqueue(playerWhoSentMessage);
+                }
+                return true;
+            }));
+
+            // A player is asking us to get off the terminal,
+            // probably so they can use it.
+            ChatCommandsManager.RegisterCommandForState<MissionControlState>(new ChatCommand(Const.HOP_OFF_THE_TERMINAL_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
+            {
+                MissionControlState missionControlState = (MissionControlState)state; // We have bigger problems if this cast fails!
+                if (!missionControlState.playerRequestedTerminal)
+                {
+                    lethalBotAI.SendChatMessage("Understood, I am leaving the terminal now.");
+                }
+                missionControlState.playerRequestedTerminal = true;
+                missionControlState.waitForTerminalTime = 0f;
+                return true;
+            }));
+
+            // A player is asking us to transmit a message
+            ChatCommandsManager.RegisterCommandForState<MissionControlState>(new ChatCommand(Const.TRANSMIT_KEYWORD, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
+            {
+                // First we need to extract the message!
+                // FIXME: There has to be a better way to do this!
+                MissionControlState missionControlState = (MissionControlState)state; // We have bigger problems if this cast fails!
+                int transmitIndex = message.IndexOf(Const.TRANSMIT_KEYWORD) + Const.TRANSMIT_KEYWORD_LENGTH;
+                string messageToTransmit = message.Substring(transmitIndex).Trim();
+                lethalBotAI.SendChatMessage($"Alright, I will relay, {messageToTransmit} to the rest of the crew.");
+
+                // Queue the message to be sent!
+                missionControlState.SendMessageUsingSignalTranslator(messageToTransmit, MessagePriority.High);
+                return true;
+            }));
         }
 
-        // We are the ship operator, these messages mean nothing to us!
-        // After all, we already know what we just sent!
-        public override void OnSignalTranslatorMessageReceived(string message)
+        /// <inheritdoc cref="AIState.RegisterSignalTranslatorCommands"/>
+        public static new void RegisterSignalTranslatorCommands()
         {
-            return;
+            // We are the ship operator, these messages mean nothing to us!
+            // After all, we already know what we just sent!
+            SignalTranslatorCommandsManager.RegisterIgnoreDefaultForState<MissionControlState>();
         }
 
         public override void UseLethalPhones()
@@ -2039,7 +2111,7 @@ namespace LethalBots.AI.AIStates
             {
                 return false;
             }
-            return true; // Everything else can go!
+            return base.FindObject(item); // Everything else can go!
         }
 
         /// <summary>

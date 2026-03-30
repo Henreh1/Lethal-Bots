@@ -3,12 +3,16 @@ using HarmonyLib;
 using LethalBots.Constants;
 using LethalBots.Enums;
 using LethalBots.Managers;
+using LethalBots.NetworkSerializers;
+using LethalBots.Utils.Helpers;
 using System.Collections;
 using System.Linq;
 using System.Reflection;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.InputSystem.HID;
+using static UnityEngine.InputSystem.InputRemoting;
 using static UnityEngine.SendMouseEvents;
 
 namespace LethalBots.AI.AIStates
@@ -23,6 +27,7 @@ namespace LethalBots.AI.AIStates
         private static readonly AccessTools.FieldRef<PatcherTool, bool> isScanning = AccessTools.FieldRefAccess<bool>(typeof(PatcherTool), "isScanning");
         private static readonly AccessTools.FieldRef<PatcherTool, int> anomalyMask = AccessTools.FieldRefAccess<int>(typeof(PatcherTool), "anomalyMask");
         private float attackFOV;
+        private bool canHitTarget;
         private RaycastHit[]? enemyColliders;
         private Coroutine? currentAttackRoutine;
         private Collider? _enemyCollision;
@@ -32,12 +37,12 @@ namespace LethalBots.AI.AIStates
         {
             get
             {
-                if (_lastEnemy != currentEnemy || (Time.timeSinceLevelLoad - lastColliderUpdateTimer) > 2f)
+                if (_lastEnemy != CurrentEnemy || (Time.timeSinceLevelLoad - lastColliderUpdateTimer) > 2f)
                 {
-                    _enemyCollision = FindEnemyCollider(currentEnemy, npcController.Npc.transform.position);
-                    _lastEnemy = currentEnemy;
+                    _enemyCollision = FindEnemyCollider(CurrentEnemy, npcController.Npc.transform.position);
+                    _lastEnemy = CurrentEnemy;
                     lastColliderUpdateTimer = Time.timeSinceLevelLoad;
-                    Plugin.LogDebug($"Enemy: {currentEnemy} Enemy Collider: {_enemyCollision}");
+                    Plugin.LogDebug($"Enemy: {CurrentEnemy} Enemy Collider: {_enemyCollision}");
                 }
                 return _enemyCollision;
             }
@@ -46,28 +51,29 @@ namespace LethalBots.AI.AIStates
         {
             CurrentState = EnumAIStates.FightEnemy;
 
-            this.currentEnemy = enemyAI;
+            this.CurrentEnemy = enemyAI;
         }
 
         public override void OnEnterState()
         {
             if (!hasBeenStarted)
             {
-                if (this.currentEnemy == null 
-                    || this.currentEnemy.isEnemyDead)
+                if (this.CurrentEnemy == null 
+                    || this.CurrentEnemy.isEnemyDead)
                 {
-                    Plugin.LogWarning("FightEnemyState: currentEnemy is null or dead, cannot start the state!");
+                    Plugin.LogWarning("FightEnemyState: CurrentEnemy is null or dead, cannot start the state!");
                     ChangeBackToPreviousState();
                     return;
                 }
-                float? fearRange = ai.GetFearRangeForEnemies(this.currentEnemy);
+                float? fearRange = ai.GetFearRangeForEnemies(this.CurrentEnemy);
                 if (!fearRange.HasValue
-                    || !ai.CanEnemyBeKilled(this.currentEnemy)
+                    || !ai.CanEnemyBeKilled(this.CurrentEnemy)
                     || !ai.HasCombatWeapon())
                 {
                     ChangeBackToPreviousState();
                     return;
                 }
+                canHitTarget = false;
                 StartAttackCoroutine(); // Start the attack coroutine!
             }
             base.OnEnterState();
@@ -86,21 +92,21 @@ namespace LethalBots.AI.AIStates
         public override void DoAI()
         {
             // Enemy is either dead or invaild!
-            if (currentEnemy == null || currentEnemy.isEnemyDead)
+            if (CurrentEnemy == null || CurrentEnemy.isEnemyDead)
             {
                 ChangeBackToPreviousState();
                 return;
             }
 
             // Kinda hard to kill an enemy without a weapon
-            if (!ai.CanEnemyBeKilled(currentEnemy) || !ai.HasCombatWeapon())
+            if (!ai.CanEnemyBeKilled(CurrentEnemy) || !ai.HasCombatWeapon())
             {
                 ChangeBackToPreviousState(); 
                 return;
             }
 
             // Not a threat!
-            float? fearRange = ai.GetFearRangeForEnemies(currentEnemy);
+            float? fearRange = ai.GetFearRangeForEnemies(CurrentEnemy);
             if (!fearRange.HasValue)
             {
                 ChangeBackToPreviousState();
@@ -109,12 +115,12 @@ namespace LethalBots.AI.AIStates
 
             // Check if another enemy is closer
             EnemyAI? newEnemyAI = ai.CheckLOSForEnemy(Const.LETHAL_BOT_FOV, Const.LETHAL_BOT_ENTITIES_RANGE, (int)Const.DISTANCE_CLOSE_ENOUGH_HOR);
-            if (newEnemyAI != null && newEnemyAI != this.currentEnemy)
+            if (newEnemyAI != null && newEnemyAI != this.CurrentEnemy)
             {
                 float? newFearRange = ai.GetFearRangeForEnemies(newEnemyAI);
                 if (newFearRange.HasValue && ai.CanEnemyBeKilled(newEnemyAI))
                 {
-                    this.currentEnemy = newEnemyAI;
+                    this.CurrentEnemy = newEnemyAI;
                     fearRange = newFearRange.Value;
                 }
                 // else no fear range, ignore this enemy, already ignored by CheckLOSForEnemy but hey better be safe
@@ -153,14 +159,17 @@ namespace LethalBots.AI.AIStates
                 return;
             }
 
+            // ATTACK!
+            StartAttackCoroutine();
+
             // Close enough to use item, attempt to use
             float enemySize = EnemyCollision != null ? EnemyCollision.bounds.extents.magnitude : 0.4f;
-            float sqrMagDistanceEnemy = (this.currentEnemy.transform.position - npcController.Npc.transform.position).sqrMagnitude;
+            float sqrMagDistanceEnemy = (this.CurrentEnemy.transform.position - npcController.Npc.transform.position).sqrMagnitude;
             float maxEnemyDistance = GetAttackRangeForWeapon(ai.HeldItem) + enemySize;
             float fallBackDistance = maxEnemyDistance * 0.75f;
             float giveupRange = fearRange.Value * 2;
-            Vector3 targetPos = EnemyCollision != null ? EnemyCollision.bounds.center : this.currentEnemy.eye.position;
-            if (sqrMagDistanceEnemy < maxEnemyDistance * maxEnemyDistance && !Physics.Linecast(npcController.Npc.gameplayCamera.transform.position, targetPos, StartOfRound.Instance.collidersAndRoomMaskAndDefault))
+            Vector3 targetPos = EnemyCollision != null ? EnemyCollision.bounds.center : this.CurrentEnemy.eye.position;
+            if (sqrMagDistanceEnemy < maxEnemyDistance * maxEnemyDistance && canHitTarget)
             {
                 // We are close enough to the enemy, lets attack!
                 if (!npcController.Npc.inAnimationWithEnemy)
@@ -169,7 +178,7 @@ namespace LethalBots.AI.AIStates
                     // After all, we don't want to be in grabbing range of the enemy!
                     if (sqrMagDistanceEnemy < fallBackDistance * fallBackDistance)
                     {
-                        Ray ray = new Ray(npcController.Npc.transform.position, npcController.Npc.transform.position + Vector3.up * 0.2f - this.currentEnemy.transform.position + Vector3.up * 0.2f);
+                        Ray ray = new Ray(npcController.Npc.transform.position, npcController.Npc.transform.position + Vector3.up * 0.2f - this.CurrentEnemy.transform.position + Vector3.up * 0.2f);
                         ray.direction = new Vector3(ray.direction.x, 0f, ray.direction.z);
                         Vector3 pos = (!Physics.Raycast(ray, out RaycastHit hit, maxEnemyDistance, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore)) ? ray.GetPoint(maxEnemyDistance) : hit.point;
                         Vector3 fallbackPos = RoundManager.Instance.GetNavMeshPosition(pos, default, 2.7f);
@@ -181,14 +190,11 @@ namespace LethalBots.AI.AIStates
                     {
                         ai.StopMoving();
                     }
-
-                    // Start the attack coroutine if not already done so!
-                    StartAttackCoroutine();
                 }
             }
             // Enemy is outside our retreat range, abort!
             else if (sqrMagDistanceEnemy > giveupRange * giveupRange
-                || !ai.IsValidPathToTarget(currentEnemy.transform.position))
+                || !ai.IsValidPathToTarget(CurrentEnemy.transform.position))
             {
                 ChangeBackToPreviousState();
                 return;
@@ -196,16 +202,16 @@ namespace LethalBots.AI.AIStates
             else
             {
                 // Else get close to target
-                ai.SetDestinationToPositionLethalBotAI(currentEnemy.transform.position);
+                ai.SetDestinationToPositionLethalBotAI(CurrentEnemy.transform.position);
                 npcController.OrderToSprint(); // Sprint, we need to move NOW!
                 ai.OrderMoveToDestination();
             }
 
             // Look at target or not if hidden by stuff
             if (!Physics.Linecast(npcController.Npc.gameplayCamera.transform.position, targetPos + Vector3.up * 0.2f, out RaycastHit hitInfo, StartOfRound.Instance.collidersAndRoomMaskAndDefault)
-                || hitInfo.collider.gameObject.GetComponentInParent<EnemyAI>() == this.currentEnemy)
+                || hitInfo.collider.gameObject.GetComponentInParent<EnemyAI>() == this.CurrentEnemy)
             {
-                npcController.OrderToLookAtPosition(targetPos, EnumLookAtPriority.HIGH_PRIORITY, ai.AIIntervalTime, true, maxBodyFOV: attackFOV);
+                npcController.OrderToLookAtPosition(this.CurrentEnemy.NetworkObject, EnumLookAtPriority.HIGH_PRIORITY, ai.AIIntervalTime, true, maxBodyFOV: attackFOV);
             }
             else
             {
@@ -272,21 +278,22 @@ namespace LethalBots.AI.AIStates
             });
         }
 
-        // We are fighting right now, these messages should be queued!
-        public override void OnSignalTranslatorMessageReceived(string message)
+        /// <inheritdoc cref="AIState.RegisterSignalTranslatorCommands"/>
+        public static new void RegisterSignalTranslatorCommands()
         {
+            // We are fighting right now, these messages should be queued!
             // Return to the ship when we finish!
-            if (message == "return")
+            SignalTranslatorCommandsManager.RegisterCommandForState<FightEnemyState>(new SignalTranslatorCommand(Const.RETURN_COMMAND, (state, lethalBotAI, message) =>
             {
-                if (this.currentEnemy != null && this.currentEnemy.targetPlayer != npcController.Npc)
+                FightEnemyState fightEnemyState = (FightEnemyState)state;
+                if (state.CurrentEnemy != null && state.CurrentEnemy.targetPlayer != lethalBotAI.NpcController.Npc)
                 {
-                    ai.State = new ReturnToShipState(this);
-                    return;
+                    lethalBotAI.State = new ReturnToShipState(state);
+                    return true;
                 }
-                previousAIState = new ReturnToShipState(this);
-                return;
-            }
-            base.OnSignalTranslatorMessageReceived(message);
+                fightEnemyState.previousAIState = new ReturnToShipState(state);
+                return true;
+            }));
         }
 
         public override bool? ShouldBotCrouch()
@@ -332,16 +339,16 @@ namespace LethalBots.AI.AIStates
         /// <summary>
         /// Helper function to find the collider of an enemy!
         /// </summary>
-        /// <param name="currentEnemy">the enemy to find the collider for</param>
+        /// <param name="CurrentEnemy">the enemy to find the collider for</param>
         /// <returns>the found collider or null</returns>
-        private static Collider? FindEnemyCollider(EnemyAI? currentEnemy, Vector3 ourPos)
+        private static Collider? FindEnemyCollider(EnemyAI? CurrentEnemy, Vector3 ourPos)
         {
             Collider? result = null;
             float resultDistSqr = float.MaxValue;
-            if (currentEnemy != null)
+            if (CurrentEnemy != null)
             {
                 Plugin.LogDebug($"Attempt 1 to get the enemy collider!");
-                Collider[] colliders = currentEnemy.gameObject.GetComponents<Collider>();
+                Collider[] colliders = CurrentEnemy.gameObject.GetComponents<Collider>();
                 foreach (Collider collider in colliders)
                 {
                     // Scan nodes are not the enemy's collider!
@@ -364,7 +371,7 @@ namespace LethalBots.AI.AIStates
                 if (result == null)
                 {
                     Plugin.LogDebug($"Attempt 2 to get the enemy collider!");
-                    colliders = currentEnemy.gameObject.GetComponentsInChildren<Collider>();
+                    colliders = CurrentEnemy.gameObject.GetComponentsInChildren<Collider>();
                     foreach (Collider childCollider in colliders)
                     {
                         // Scan nodes are not the enemy's collider!
@@ -396,10 +403,11 @@ namespace LethalBots.AI.AIStates
 
         private IEnumerator weaponAttackCoroutine()
         {
+            CountdownTimer attackCooldownTimer = new CountdownTimer();
             while (ai.State != null
                 && ai.State == this
-                && this.currentEnemy != null 
-                && !currentEnemy.isEnemyDead)
+                && this.CurrentEnemy != null 
+                && !CurrentEnemy.isEnemyDead)
             {
                 // Make sure we have a weapon!
                 if (ai.AreHandsFree() || !ai.IsHoldingCombatWeapon())
@@ -410,11 +418,17 @@ namespace LethalBots.AI.AIStates
 
                 // Check if we are still close enough!
                 GrabbableObject heldItem = ai.HeldItem;
-                //float enemySize = EnemyCollision != null ? EnemyCollision.bounds.extents.magnitude : 0.4f;
-                Vector3 targetPos = EnemyCollision != null ? EnemyCollision.bounds.center : this.currentEnemy.eye.position;
-                //float sqrMagDistanceEnemy = (targetPos - npcController.Npc.transform.position).sqrMagnitude;
-                //float maxEnemyDistance = GetAttackRangeForWeapon(heldItem) + enemySize;
-                if (!CanHitEnemyWithHeldItem(heldItem, targetPos)) // sqrMagDistanceEnemy >= maxEnemyDistance * maxEnemyDistance
+                Vector3 targetPos = EnemyCollision != null ? EnemyCollision.bounds.center : this.CurrentEnemy.eye.position;
+                if (!CanHitEnemyWithHeldItem(heldItem, targetPos))
+                {
+                    canHitTarget = false;
+                    yield return null;
+                    continue;
+                }
+
+                // We have a shot!
+                canHitTarget = true;
+                if (attackCooldownTimer.HasStarted() && !attackCooldownTimer.Elapsed())
                 {
                     yield return null;
                     continue;
@@ -455,7 +469,7 @@ namespace LethalBots.AI.AIStates
                     if (patcherTool.isShocking)
                     {
                         // We are already stunning our target, keep at it
-                        IShockableWithGun? shockableWithGun = this.currentEnemy.transform.GetComponentInChildren<IShockableWithGun>();
+                        IShockableWithGun? shockableWithGun = this.CurrentEnemy.transform.GetComponentInChildren<IShockableWithGun>();
                         Plugin.LogDebug($"Shocking Target: {shockingTarget}, Current Enemy Shockable: {shockableWithGun?.GetShockableTransform()}");
                         if (shockingTarget == shockableWithGun?.GetShockableTransform())
                         {
@@ -489,7 +503,8 @@ namespace LethalBots.AI.AIStates
                     }
                 }
 
-                yield return new WaitForSeconds(GetWeaponAttackInterval(heldItem));
+                // Start the cooldown timer
+                attackCooldownTimer.Start(GetWeaponAttackInterval(heldItem));
             }
 
             StopAttackCoroutine();
@@ -503,7 +518,7 @@ namespace LethalBots.AI.AIStates
         /// <returns></returns>
         private bool CanHitEnemyWithHeldItem(GrabbableObject heldItem, Vector3 targetPos)
         {
-            if (this.currentEnemy == null)
+            if (this.CurrentEnemy == null)
                 return false;
 
             PlayerControllerB lethalBotController = npcController.Npc;
@@ -532,7 +547,7 @@ namespace LethalBots.AI.AIStates
                     var hitInfo = enemyColliders[i];
                     if (hitInfo.collider == EnemyCollision
                         || (hitInfo.collider.gameObject.GetComponentInParent<EnemyAI>() is EnemyAI hitTarget 
-                            && hitTarget == this.currentEnemy))
+                            && hitTarget == this.CurrentEnemy))
                     {
                         return true;
                     }
@@ -670,6 +685,22 @@ namespace LethalBots.AI.AIStates
             }
         }
 
+        public override Vector3? SelectSubjectTargetPoint(LookAtTarget lookAtTarget, NetworkObject? subject, PlayerControllerB ourController)
+        {
+            // Change where we are aiming based on the given network object
+            if (subject != null && subject.TryGetComponent<EnemyAI>(out var enemyAI))
+            {
+                Collider? lookAtSubjectCollider = enemyAI == this.CurrentEnemy ? EnemyCollision : FindEnemyCollider(enemyAI, ourController.transform.position);
+                if (lookAtSubjectCollider != null)
+                {
+                    return lookAtSubjectCollider.bounds.center;
+                }
+            }
+            
+            // Base logic for everything else
+            return base.SelectSubjectTargetPoint(lookAtTarget, subject, ourController);
+        }
+
         /// <summary>
         /// We need to find a weapon that has ammo!
         /// </summary>
@@ -696,7 +727,7 @@ namespace LethalBots.AI.AIStates
         {
             bool isCurrentRanged = LethalBotAI.IsItemRangedWeapon(currentBest);
             bool isCanidateRanged = LethalBotAI.IsItemRangedWeapon(canidate);
-            if (this.currentEnemy is CentipedeAI)
+            if (this.CurrentEnemy is CentipedeAI)
             {
                 if (isCurrentRanged && !isCanidateRanged)
                 {

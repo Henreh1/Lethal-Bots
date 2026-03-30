@@ -95,7 +95,8 @@ namespace LethalBots.Managers
                 string[] files = Directory.GetFiles(folderPath, "*" + fileType, SearchOption.AllDirectories);
                 foreach (string file in files)
                 {
-                    AddPath("file://" + file);
+                    //Plugin.LogInfo(new Uri(file).AbsoluteUri);
+                    AddPath(file);
                 }
             }
         }
@@ -158,18 +159,25 @@ namespace LethalBots.Managers
 
         private IEnumerator LoadAudioAndPlay(string uri, LethalBotVoice lethalBotVoice)
         {
+            // Get the audio type
             AudioType audioType = GetAudioType(uri);
-            using (UnityWebRequest www = UnityWebRequestMultimedia.GetAudioClip(uri, audioType))
+
+            // Proper URI conversion
+            //string sanitizedUri = new Uri(uri);
+            string sanitizedUri = uri;
+            using (UnityWebRequest www = UnityWebRequestMultimedia.GetAudioClip(sanitizedUri, audioType))
             {
                 yield return www.SendWebRequest();
 
+                Plugin.LogDebug($"Loading audio file at {www.uri}");
                 if (www.result == UnityWebRequest.Result.ConnectionError || www.result == UnityWebRequest.Result.ProtocolError)
                 {
                     lethalBotVoice.ResetAboutToTalk();
-                    Plugin.LogError($"Error while loading audio file at {uri} : {www.error}");
+                    Plugin.LogError($"Error while loading audio file at {uri} : {www.error} \n SanitizedUri: {sanitizedUri}");
                 }
                 else
                 {
+                    Plugin.LogInfo($"Loaded audio file at {uri} \n SanitizedUri: {sanitizedUri}");
                     AudioClip audioClip = DownloadHandlerAudioClip.GetContent(www);
                     AddAudioClip(uri, audioClip);
 

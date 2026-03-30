@@ -944,6 +944,18 @@ namespace LethalBots.Patches.NpcPatches
         //    });
         //}
 
+        [HarmonyPatch("KillPlayer")]
+        [HarmonyPostfix]
+        static void KillPlayer_PostFix(PlayerControllerB __instance)
+        {
+            // Remove player from their group
+            if (__instance.IsOwner && __instance.isPlayerDead && __instance.AllowPlayerDeath())
+            {
+                GroupManager.Instance.RemoveFromCurrentGroupAndSync(__instance);
+                LethalBotManager.Instance.RemovePlayerFromLootTransferListAndSync(__instance);
+            }
+        }
+
         /// <summary>
         /// Patch to add text when pointing at an lethalBot at grab range,<br/>
         /// shows the different possible actions for interacting with lethalBot
@@ -1003,7 +1015,10 @@ namespace LethalBots.Patches.NpcPatches
                 }
 
                 // Name billboard
-                lethalBot.NpcController.Npc.ShowNameBillboard();
+                if (!Plugin.Config.DisableNameBillBoards.Value)
+                { 
+                    lethalBot.NpcController.Npc.ShowNameBillboard(); 
+                }
 
                 // No action if in spawning animation
                 if (lethalBot.IsSpawningAnimationRunning())
@@ -1027,7 +1042,7 @@ namespace LethalBots.Patches.NpcPatches
                 // Line Follow
                 EnumAIStates currentBotState = lethalBot.State.GetAIState();
                 if (lethalBot.OwnerClientId != __instance.actualClientId 
-                    || !lethalBot.IsFollowingTargetPlayer())
+                    || !lethalBot.IsFollowingLocalPlayer())
                 {
                     sb.Append(string.Format(Const.TOOLTIP_FOLLOW_ME, InputManager.Instance.GetKeyAction(Plugin.InputActionsInstance.LeadBot)))
                         .AppendLine();

@@ -68,7 +68,7 @@ To link the voice folder to the bot, simply change the "VoiceFolder" property in
 T-Rizzle: I may change the voice lines along with using TTS in the future, but since the original mod was under an MIT license, I will keep the original voice lines for now.
 </br>A big thanks to **Mathew Kelly** and his incredible voice acting, there's more than 700 (!!) voice lines for those little guys.</br>
 Chilling with you, following, founding loot, panicking, you name it, there's a voice line for every state of mind !</br>
-You may know him as **Dragon-V0942** from [FurAffinity](https://www.furaffinity.net/user/dragon-v0942), and you can find some of his voice acting works on youtube [(Voice acting example)](https://www.youtube.com/watch?v=5LGVz-ONeKE).
+You may know him as **Dragon-V0942** from [FurAffinity](https://www.furaffinity.net/user/dragon-v0942), and you can find some of his voice acting works on youtube [(Voice acting example)](https://youtu.be/SZDDcCBvyjc).
 </br>
 </br>
 
@@ -92,6 +92,10 @@ Also, the bot only checks for the keywords anywhere in the message, for example,
 </br>**transmit (desired message)** - The bot who is currently on the terminal will send the given message on the signal translator.
 </br>**transfer loot** - The bot will cycle between facility entrances and transfer any loot they find to the ship.
 </br>**gear up** - Bots that are following the player will automatically swap to the GrabLoadoutState and grab their set loadout.
+</br>**create group** - This creates a new group with you as the leader!
+</br>**leave group** - This causes you to leave the current group you are in.
+</br>**join group** - This lets you join a group. You must look at the bot of the group you want to join.
+</br>**use key** - This tells every bot that is following you to unlock the door you are looking at. NOTE: You must be standing within use range for this to work!
 </br>Please note that you must be in chat range for the bot to hear you. If you are too far away, the bot will not respond to your command.
 If both you and the bot have a walkie-talkie, you can use the command in the chat and the bot will respond to it.
 </br>Please note that these are also voice commands, but they require you to only say the word unlike how they work as said in the chat.
@@ -106,6 +110,8 @@ Please note that these commands are not case sensitive, so you can use any combi
 </br>**i will man the ship** - If you say this command, you will be marked as the Mission Controller. The previous Bot that was set as Mission Controller will hand the terminal to you. No other bots wil be allowed to automatically assume the Mission Control role unless one of the following things happen:
 1. You die
 2. The day ends
+
+**i will transfer loot** - This tells bots that you will be transferring loot! NOTE: All it does is add you to the LootTransferPlayers list. This causes the drop loot outside of entrances code to run!
 
 ## How the bots work
 The bots take one of the player objects in the game and I attach an EnemyAI to it for the pathfinding code.
@@ -237,11 +243,11 @@ These bots are to be more player like and this includes advantages such as count
 - [**Szumi57**](https://github.com/Szumi57) - Original idea and coding of the original mod, Lethal Intership.
 - [**T-Rizzle**](https://github.com/T-Rizzle12) - Major code refactor, bug fixes, and new features.
 - [**Gummar**](https://github.com/Gummar) - Created the new search algorithm for the bots.
-- - **Mathew Kelly** - Voice acting for the bots, over 700 voice lines!
+- **Mathew Kelly** - Voice acting for the bots, over 700 voice lines!
 
 ## Things to add
 - More Orders, currently you can tell them to loot and follow you. There are a decent amount of chat commands at least?
-- I hope to make them able to do more on the ship terminal in the future. Like purchasing items and who knows what else!
+- ~~I hope to make them able to do more on the ship terminal in the future. Like purchasing items and who knows what else!~~ Done! :)
 - ~~Add some kind of voice recognition software, so bots could respond to simple voice commands. (DEVNOTE: Looks like there are some librarys on thunderstore that could help me with this endeavor!)~~ DONE! :)
 - As stated earlier, add TTS to bots so they can be better at relaying information to players. (DEVNOTE: TTS would be perfect for helping the bots declare enemies on the terminal!)
 
@@ -250,7 +256,7 @@ These bots are to be more player like and this includes advantages such as count
 - Sand spider web trap not working for bots. Transpiler or Postfix should work, just need to find out what would be the best option.
 - Snare Fleas ignore bots that walk under them. The cause is that they only check for the Local Client walks under them, a transpiler or postfix can fix this!
 - ~~Nutcracker ignoring bots. The cause of this is known, but I still don't know a good way to fix it yet!~~ Fixed!
-- Ghost Girl spawns but does nothing if it picks a bot. Plans to fix this are currently in the works! Lets just say its a lot of transpiler work.......
+- ~~Ghost Girl spawns but does nothing if it picks a bot. Plans to fix this are currently in the works! Lets just say its a lot of transpiler work.......~~ Fixed!
 - Compatibility with modded maps, for environmental hazards damages. The cause is due to most of the player code only running on the local player, I think I can get some kill triggers to work using transpilers/postfixes.
 - Bots don't use ladders, I know this is a major issue, but fixing it is harder than it seems. For now they use the same movement as the masked!
 - Bots can hear you speak if you have push to talk set. The cause of this is how PySpeech works, since it runs a separate application that listens to your microphone. I may be able to fix this......

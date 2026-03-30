@@ -9,6 +9,9 @@ using LethalBots.Patches.GameEnginePatches;
 using LethalBots.Patches.MapPatches;
 using LethalBots.Patches.ModPatches.LethalPhones;
 using LethalBots.Patches.NpcPatches;
+using LethalBots.Utils.Helpers;
+using LethalLib.Modules;
+using SpeechRecognitionAPI;
 using Scoops.customization;
 using Scoops.gameobjects;
 using Scoops.misc;
@@ -17,10 +20,12 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.AI;
+using static UnityEngine.InputSystem.InputRemoting;
 using Object = UnityEngine.Object;
 using Quaternion = UnityEngine.Quaternion;
 using Random = System.Random;
@@ -62,6 +67,9 @@ namespace LethalBots.Managers
         /// <summary>
         /// Number of actually connected players, used for the DepositItemDeskPatch!
         /// </summary>
+        /// <remarks>
+        /// This is the number of human players on the server
+        /// </remarks>
         public int AllRealPlayersCount { private set; get; }
 
         /// <summary>
@@ -253,6 +261,7 @@ namespace LethalBots.Managers
 
         private float timerSetLethalBotInElevator;
         private float timerUpdateOwnershipOfBot;
+        private static bool registeredVoiceCommands = false;
 
         /// <summary>
         /// Initialize instance,
@@ -592,6 +601,11 @@ namespace LethalBots.Managers
             DictionaryLethalBotThreats.Clear();
             RegisterDefaultThreats();
             RegisterCustomThreats();
+
+            // Register chat commands
+            RegisterDefaultCommands();
+            RegisterCustomCommands();
+            RegisterVoiceCommands();
         }
 
         private void Update()
@@ -1391,6 +1405,18 @@ namespace LethalBots.Managers
             //        break;
             //    }
             //}
+            if (Plugin.IsModGeneralImprovementsLoaded)
+            {
+                // Update scan nodes now that we have the Steam names
+                if (IsGeneralImprovementsPlayerNodesActive())
+                {
+                    var scanNode = lethalBotController.GetComponentInChildren<ScanNodeProperties>();
+                    if (scanNode != null)
+                    {
+                        scanNode.headerText = lethalBotController.playerUsername;
+                    }
+                }
+            }
 
             // Direct access to avoid looping
             // Exactly how the game does it in PlayerControllerB.SendNewPlayerValuesClientRpc!
@@ -1443,6 +1469,15 @@ namespace LethalBots.Managers
 
             Plugin.LogDebug($"++ Bot with body {lethalBotController.playerClientId} with identity spawned: {lethalBotIdentity.ToString()}");
             lethalBotAI.Init(spawnParamsNetworkSerializable.enumSpawnAnimation);
+        }
+
+        /// <summary>
+        /// Helper function to check if <see cref="Plugin.IsModGeneralImprovementsLoaded"/> has ScanPlayers enabled.
+        /// </summary>
+        /// <returns></returns>
+        private bool IsGeneralImprovementsPlayerNodesActive()
+        {
+            return GeneralImprovements.Plugin.ScanPlayers.Value;
         }
 
         /// <summary>
@@ -1655,6 +1690,10 @@ namespace LethalBots.Managers
                 if (Plugin.IsModLethalPhonesLoaded)
                 {
                     lethalBotAI.StopBeingSwitchboardOperator();
+                    if (lethalBotAI.AreWeInCall() || lethalBotAI.IsPhoneEquipped())
+                    {
+                        lethalBotAI.HangupPhone();
+                    }
                     CleanupLethalPhoneForBot(lethalBotController);
                 }
 
@@ -1665,6 +1704,12 @@ namespace LethalBots.Managers
                 if (GameNetworkManager.Instance.localPlayerController.isPlayerDead)
                 {
                     HUDManager.Instance.UpdateBoxesSpectateUI();
+                }
+
+                // Remove bot from their group
+                if (base.IsOwner)
+                {
+                    GroupManager.Instance.RemoveFromCurrentGroupAndSync(lethalBotController);
                 }
 
                 // Finally update player counts
@@ -1752,7 +1797,7 @@ namespace LethalBots.Managers
                 }
 
                 Plugin.LogDebug($"Bot {lethalBotAI.NpcController.Npc.playerUsername} recevied message {message}!");
-                lethalBotAI.State.OnSignalTranslatorMessageReceived(message);
+                SignalTranslatorCommandsManager.OnSignalTranslatorMessageReceived(lethalBotAI.State, message);
             }
         }
 
@@ -1779,6 +1824,36 @@ namespace LethalBots.Managers
                     if (playerWhoSentMessage == GameNetworkManager.Instance.localPlayerController)
                     { 
                         MissionControlPlayer = playerWhoSentMessage; 
+                    }
+                    return;
+                }
+                else if (message.Contains("i will transfer loot"))
+                {
+                    // A human player wants to transfer loot. Sync to others!
+                    // HACKHACK: Only network this once, since LethalBotsRespondToChatMessage is called for all players,
+                    // we can check this here!
+                    if (playerWhoSentMessage == GameNetworkManager.Instance.localPlayerController)
+                    {
+                        AddPlayerToLootTransferListAndSync(playerWhoSentMessage);
+                    }
+                    return;
+                }
+                else if (message.Contains(Const.CREATE_GROUP_COMMAND))
+                {
+                    // Lets the local player create a group.
+                    if (playerWhoSentMessage == GameNetworkManager.Instance.localPlayerController)
+                    { 
+                        GroupManager.Instance.CreateGroupAndSync(playerWhoSentMessage); 
+                    }
+                    return;
+                }
+                else if (message.Contains(Const.LEAVE_GROUP_COMMAND))
+                {
+                    // Lets the local player leave the group they are in.
+                    if (playerWhoSentMessage == GameNetworkManager.Instance.localPlayerController 
+                        && GroupManager.Instance.IsPlayerInGroup(playerWhoSentMessage))
+                    {
+                        GroupManager.Instance.RemoveFromCurrentGroupAndSync(playerWhoSentMessage);
                     }
                     return;
                 }
@@ -1874,7 +1949,7 @@ namespace LethalBots.Managers
                     //Plugin.LogDebug($"Bot {(botController.holdingWalkieTalkie ? "does" : "doesn't")} have a walkie-talkie!");
                     //Plugin.LogDebug($"Player who sent message {(playerWhoSentMessage.holdingWalkieTalkie ? "does" : "doesn't")} have a walkie-talkie!");
                     //Plugin.LogDebug($"Ignoring range: {flag}");
-                    lethalBotAI.State.OnPlayerChatMessageReceived(message, playerWhoSentMessage, false);
+                    ChatCommandsManager.OnPlayerChatMessageReceived(lethalBotAI.State, message, playerWhoSentMessage, false);
                 }
             }
         }
@@ -1930,7 +2005,7 @@ namespace LethalBots.Managers
                     //Plugin.LogDebug($"Bot {(botController.holdingWalkieTalkie ? "does" : "doesn't")} have a walkie-talkie!");
                     //Plugin.LogDebug($"Player who said message {(playerWhoSaidMessage.holdingWalkieTalkie ? "does" : "doesn't")} have a walkie-talkie!");
                     //Plugin.LogDebug($"Ignoring range: {flag}");
-                    lethalBotAI.State.OnPlayerChatMessageReceived(message, playerWhoSaidMessage, true);
+                    ChatCommandsManager.OnPlayerChatMessageReceived(lethalBotAI.State, message, playerWhoSaidMessage, true);
                 }
             }
         }
@@ -1979,6 +2054,137 @@ namespace LethalBots.Managers
                 return;
             }
             LethalBotsRespondToVoiceChat(message, playerWhoSaidMessage);
+        }
+
+        /// <summary>
+        /// Helper function that registers voice commands
+        /// </summary>
+        private static void RegisterVoiceCommands()
+        {
+            // Only do this once!
+            if (registeredVoiceCommands 
+                || !Plugin.IsModSpeechRecognitionAPILoaded)
+            {
+                return;
+            }
+
+            // Grab all default and custom chat commands
+            string[] ValidCommands = ChatCommandsManager.GetAllRegisteredChatCommandKeywords();
+
+            // Register valid phrases for speech recognition
+            Speech.RegisterPhrases(ValidCommands);
+
+            // Create a handler for recognized speech events
+            void handler(object speechInstance, SpeechEventArgs text)
+            {
+                // Don't do this if the local client has disabled voice recognition
+                if (!Plugin.Config.AllowVoiceRecognition.Value)
+                {
+                    return;
+                }
+
+                // The local player gets to determine which model to use for their voice recognition.
+                // Our job is to broadcast that to all other players so their bots can respond accordingly.
+                PlayerControllerB? playerControllerB = GameNetworkManager.Instance?.localPlayerController;
+                if (playerControllerB != null && Speech.IsAboveThreshold(ValidCommands, Plugin.Config.VoiceRecognitionSimilarityThreshold.Value))
+                {
+                    LethalBotManager.Instance?.TransmitVoiceChatAndSync(Speech.bestMatch, (int)playerControllerB.playerClientId);
+                }
+            }
+
+            Speech.RegisterCustomHandler(handler);
+            registeredVoiceCommands = true;
+        }
+
+        /// <summary>
+        /// Helper function that registers the default chat commands!
+        /// </summary>
+        private static void RegisterDefaultCommands()
+        {
+            // Memory leak prevention
+            ChatCommandsManager.RemoveAllChatCommands();
+            SignalTranslatorCommandsManager.RemoveAllSignalTranslatorCommands();
+
+            // ****************************************************************
+            // First things first, the default chat commands for every state!
+            // ****************************************************************
+            AIState.RegisterChatCommands();
+
+            // ****************************************************************
+            // Now, onto state specific overrides!
+            // ****************************************************************
+
+            // Transfer Loot state
+            TransferLootState.RegisterChatCommands();
+
+            // Brain Dead state
+            BrainDeadState.RegisterChatCommands();
+
+            // Chill With Player state
+            ChillWithPlayerState.RegisterChatCommands();
+
+            // Mission Control state
+            MissionControlState.RegisterChatCommands();
+
+            // Panik state
+            PanikState.RegisterChatCommands();
+
+            // *******************************************************************************
+            // We go ahead and create the default signal translator commands for every state!
+            // *******************************************************************************
+            AIState.RegisterSignalTranslatorCommands();
+
+            // ****************************************************************
+            // Now, onto state specific overrides!
+            // ****************************************************************
+
+            // Brain Dead state
+            BrainDeadState.RegisterSignalTranslatorCommands();
+
+            // Return To Ship state
+            ReturnToShipState.RegisterSignalTranslatorCommands();
+
+            // Chill At Ship state
+            ChillAtShipState.RegisterSignalTranslatorCommands();
+
+            // Chill With Player state
+            ChillWithPlayerState.RegisterSignalTranslatorCommands();
+
+            // Get Close to Player state
+            GetCloseToPlayerState.RegisterSignalTranslatorCommands();
+
+            // Player in Cruiser state
+            PlayerInCruiserState.RegisterSignalTranslatorCommands();
+
+            // Just Lost Player state
+            JustLostPlayerState.RegisterSignalTranslatorCommands();
+
+            // Mission Control state
+            MissionControlState.RegisterSignalTranslatorCommands();
+
+            // Panik state
+            PanikState.RegisterSignalTranslatorCommands();
+
+            // Fight Enemy state
+            FightEnemyState.RegisterSignalTranslatorCommands();
+
+            // Use Key On Locked Door state
+            UseKeyOnLockedDoorState.RegisterSignalTranslatorCommands();
+        }
+
+        /// <summary>
+        /// Helper function that registers custom chat command that are added by mods!
+        /// </summary>
+        /// <remarks>
+        /// This exists for the sole purpose 
+        /// of allowing modders a function to patch to that will guarantee two things:<br/>
+        /// 1. The ability to override the default chat commands as desired.<br/>
+        /// 2. A hook to safely register their modded chat commands.
+        /// </remarks>
+        private static void RegisterCustomCommands()
+        {
+            // We do nothing here, by default.......
+            return;
         }
 
         /// <summary>
@@ -2668,7 +2874,7 @@ namespace LethalBots.Managers
         /// A function to set the hangar ship door state from the server!
         /// </summary>
         /// <remarks>
-        /// This is a hacky way to sync the door state since I don't know how to get the interact triggers used by the main game.
+        /// This is a hacky way to sync the door state since I don't know how to get the interact triggers used by the main game.<br/>
         /// This is similar to how the <see cref="GiantKiwiAI.BreakIntoShip"/> code does it.
         /// </remarks>
         /// <param name="isClosed"></param>
@@ -3353,6 +3559,7 @@ namespace LethalBots.Managers
             {
                 MissionControlPlayer = null;
                 LootTransferPlayers.Clear();
+                GroupManager.Instance.ResetAndRemoveAllGroups();
             }
             SetLastReportedTimeOfDay(DayMode.Dawn);
 
@@ -3572,7 +3779,17 @@ namespace LethalBots.Managers
                 if (Plugin.IsModLethalPhonesLoaded)
                 {
                     lethalBotAI.StopBeingSwitchboardOperator();
+                    if (lethalBotAI.AreWeInCall() || lethalBotAI.IsPhoneEquipped())
+                    {
+                        lethalBotAI.HangupPhone();
+                    }
                     CleanupLethalPhoneForBot(lethalBotController);
+                }
+
+                // Remove bot from their group
+                if (base.IsOwner)
+                {
+                    GroupManager.Instance.RemoveFromCurrentGroupAndSync(lethalBotController);
                 }
 
                 // Cache the lethal bot stats for the end of game stats.
@@ -4012,10 +4229,7 @@ namespace LethalBots.Managers
         {
             if (base.IsServer)
             {
-                if (LootTransferPlayers.Contains(playerToRemove))
-                {
-                    LootTransferPlayers.Remove(playerToRemove);
-                }
+                LootTransferPlayers.Remove(playerToRemove);
             }
             else
             {

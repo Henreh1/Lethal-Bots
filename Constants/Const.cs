@@ -10,7 +10,7 @@ namespace LethalBots.Constants
     public class Const
     {
         public const string CSYNC_GUID = "com.sigurd.csync";
-        public const string PYSPEECH_GUID = "JS03.PySpeech";
+        public const string SPEECHRECOGNITIONAPI_GUID = "JS03.SpeechRecognitionAPI";
 
         public const string MORECOMPANY_GUID = "me.swipez.melonloader.morecompany";
         public const string BETTER_EXP_GUID = "Swaggies.BetterEXP";
@@ -18,6 +18,7 @@ namespace LethalBots.Constants
         public const string BETTEREMOTES_GUID = "BetterEmotes";
         public const string MODELREPLACEMENT_GUID = "meow.ModelReplacementAPI";
         public const string LETHALPHONES_GUID = "LethalPhones";
+        public const string GENERAL_IMPROVEMENTS_GUID = "ShaosilGaming.GeneralImprovements";
         public const string FASTERITEMDROPSHIP_GUID = "FlipMods.FasterItemDropship";
         public const string SHOWCAPACITY_GUID = "Piggy.ShowCapacity";
         public const string REVIVECOMPANY_GUID = "OpJosMod.ReviveCompany";
@@ -132,6 +133,25 @@ namespace LethalBots.Constants
         public const int CROUCHING_IDLE_STATE_HASH = 1917280335;
         public const int CROUCHING_WALKING_STATE_HASH = -483816927;
 
+        // Chat command consts
+        // Its a good idea to use consts for your chat command names!
+        public const string JESTER_COMMAND = "jester";
+        public const string MAN_THE_SHIP_COMMAND = "man the ship";
+        public const string TRANSFER_LOOT_COMMAND = "transfer loot";
+        public const string GEAR_UP_COMMAND = "gear up";
+        public const string START_THE_SHIP_COMMAND = "start the ship";
+        public const string REQUEST_MONITORING_COMMAND = "request monitoring";
+        public const string CLEAR_MONITORING_COMMAND = "clear monitoring";
+        public const string REQUEST_TELEPORT_COMMAND = "request teleport";
+        public const string HOP_OFF_THE_TERMINAL_COMMAND = "hop off the terminal";
+        public const string USE_KEY_COMMAND = "use key";
+        public const string JOIN_GROUP_COMMAND = "join group";
+        public const string LEAVE_GROUP_COMMAND = "leave group";
+        public const string CREATE_GROUP_COMMAND = "create group";
+
+        // Signal Translator command consts
+        public const string RETURN_COMMAND = "return";
+
         // BrainDeadState
         public const float MIN_TIME_TO_VOTE = 0.5f;
         public const float MAX_TIME_TO_VOTE = 1.5f;
@@ -189,6 +209,8 @@ namespace LethalBots.Constants
         public const float TIMER_CHILL_AT_SHIP_AT_COMPANY = 2f;
 
         // Searching for scrap state
+        public const float MAX_STRAGGLER_DISTANCE_HOR = 12.5f;
+        public const float MAX_STRAGGLER_DISTANCE_VER = 25f;
         public const float TIMER_SEARCH_FOR_SCRAP = 60f;
         public const float TIMER_CHECK_FOR_TRAPPED_PLAYER = 2.5f;
         public const float MIN_TIME_SEARCH_LOOKING_AROUND = 2f;

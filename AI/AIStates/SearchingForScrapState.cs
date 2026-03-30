@@ -3,7 +3,9 @@ using GameNetcodeStuff;
 using LethalBots.Constants;
 using LethalBots.Enums;
 using LethalBots.Managers;
+using LethalBots.Utils.Helpers;
 using System.Collections;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -21,6 +23,7 @@ namespace LethalBots.AI.AIStates
     {
         private Coroutine? searchingWanderCoroutine = null;
         private bool grabbedLoadout;
+        private bool formedGroup;
         private float scrapTimer;
         private float waitForSafePathTimer; // This is how long we have been waiting for a safe path to our target entrance.
         private int entranceAttempts; // This is how many times we spent going into the same entrance!
@@ -29,6 +32,7 @@ namespace LethalBots.AI.AIStates
         {
             CurrentState = EnumAIStates.SearchingForScrap;
             grabbedLoadout = false;
+            formedGroup = false;
             entranceAttempts = 0;
             if (entranceToAvoid != null)
             {
@@ -42,6 +46,7 @@ namespace LethalBots.AI.AIStates
         {
             CurrentState = EnumAIStates.SearchingForScrap;
             grabbedLoadout = false;
+            formedGroup = false;
             entranceAttempts = 0;
             if (entranceToAvoid != null)
             {
@@ -53,12 +58,13 @@ namespace LethalBots.AI.AIStates
 
         public override void OnEnterState()
         {
+            PlayerControllerB ourController = npcController.Npc;
             if (!hasBeenStarted)
             {
                 // We are now searching for scrap and are no longer transferring loot!
-                if (LethalBotManager.Instance.LootTransferPlayers.Contains(npcController.Npc))
+                if (LethalBotManager.Instance.LootTransferPlayers.Contains(ourController))
                 {
-                    LethalBotManager.Instance.RemovePlayerFromLootTransferListAndSync(npcController.Npc);
+                    LethalBotManager.Instance.RemovePlayerFromLootTransferListAndSync(ourController);
                 }
             }
 
@@ -96,6 +102,37 @@ namespace LethalBots.AI.AIStates
                 return;
             }
 
+            // Create or join our assigned internal group
+            if (!formedGroup)
+            {
+                // Only check this once!
+                formedGroup = true;
+                int internalGroupID = ai.LethalBotIdentity.GroupID;
+                if (internalGroupID != GroupManager.INVALID_GROUP_INDEX && !GroupManager.Instance.IsPlayerInGroup(npcController.Npc))
+                {
+                    // Only join our predefined group if we are near the group leader
+                    if (GroupManager.Instance.DoesInternalGroupExist(ai, out int existingGroupID))
+                    {
+                        PlayerControllerB? groupLeader = GroupManager.Instance.GetGroupLeader(existingGroupID);
+                        if (groupLeader != null)
+                        {
+                            float sqrHorizontalDistanceWithTarget = Vector3.Scale((groupLeader.transform.position - npcController.Npc.transform.position), new Vector3(1, 0, 1)).sqrMagnitude;
+                            float sqrVerticalDistanceWithTarget = Vector3.Scale((groupLeader.transform.position - npcController.Npc.transform.position), new Vector3(0, 1, 0)).sqrMagnitude;
+                            if (sqrHorizontalDistanceWithTarget < Const.DISTANCE_AWARENESS_HOR * Const.DISTANCE_AWARENESS_HOR
+                                    && sqrVerticalDistanceWithTarget < Const.DISTANCE_AWARENESS_VER * Const.DISTANCE_AWARENESS_VER)
+                            {
+                                GroupManager.Instance.CreateOrJoinGroupAndSync(npcController.Npc);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        GroupManager.Instance.CreateOrJoinGroupAndSync(npcController.Npc);
+                    }
+                    return;
+                }
+            }
+
             // Start coroutine for wandering
             StartSearchingWanderCoroutine();
 
@@ -126,10 +163,11 @@ namespace LethalBots.AI.AIStates
             }
 
             // Check for object to grab
-            if (ai.HasSpaceInInventory())
+            int groupID = GroupManager.Instance.GetGroupId(npcController.Npc);
+            if (!IsInventoryFull(groupID))
             {
                 GrabbableObject? grabbableObject = ai.LookingForObjectToGrab();
-                if (grabbableObject != null)
+                if (grabbableObject != null && ai.HasSpaceInInventory(grabbableObject))
                 {
                     scrapTimer = 0f; // Reset this since we found an object!
                     ai.State = new FetchingObjectState(this, grabbableObject);
@@ -150,7 +188,59 @@ namespace LethalBots.AI.AIStates
                 return;
             }
 
+            // Use items in our inventory based on the current situation
             SelectBestItemFromInventory();
+
+            // Group logic
+            if (groupID != GroupManager.INVALID_GROUP_INDEX)
+            {
+                // The group leader does their best to make sure no one falls behind.......
+                PlayerControllerB? groupLeader = GroupManager.Instance.GetGroupLeader(groupID);
+                if (groupLeader == npcController.Npc)
+                {
+                    // NOTE: We can safely assume that groupLeader is the same as npcController.Npc here
+                    PlayerControllerB? straggler = GroupManager.Instance.GetFurthestMemberFromCenter(groupID);
+                    if (straggler != null && !ai.AreWeExposed()) // straggler != groupLeader // actually, we allow ourself since the rest of the group may have fallen behind
+                    {
+                        Vector3 groupCenter = GroupManager.Instance.GetGroupCenter(groupLeader, groupID);
+                        float sqrHorizontalDistanceWithTarget = Vector3.Scale((groupCenter - straggler.transform.position), new Vector3(1, 0, 1)).sqrMagnitude;
+                        float sqrVerticalDistanceWithTarget = Vector3.Scale((groupCenter - straggler.transform.position), new Vector3(0, 1, 0)).sqrMagnitude;
+                        if (sqrHorizontalDistanceWithTarget > Const.MAX_STRAGGLER_DISTANCE_HOR * Const.MAX_STRAGGLER_DISTANCE_HOR
+                            || sqrVerticalDistanceWithTarget > Const.MAX_STRAGGLER_DISTANCE_VER * Const.MAX_STRAGGLER_DISTANCE_VER)
+                        {
+                            if (ai.searchForScrap.searchInProgress)
+                            {
+                                // Stop the coroutine while we wait for the player or bot who fell behind
+                                ai.searchForScrap.StopSearch();
+                            }
+                            ai.StopMoving();
+                            return;
+                        }
+                    }
+                }
+                // Only the group leader should be in the searching for scrap state
+                else if (groupLeader != null)
+                {
+                    // Cheat a little here and let the bot have perfect knowledge of where their group leader is.....
+                    float sqrHorizontalDistanceWithTarget = Vector3.Scale((groupLeader.transform.position - npcController.Npc.transform.position), new Vector3(1, 0, 1)).sqrMagnitude;
+                    float sqrVerticalDistanceWithTarget = Vector3.Scale((groupLeader.transform.position - npcController.Npc.transform.position), new Vector3(0, 1, 0)).sqrMagnitude;
+                    if (sqrHorizontalDistanceWithTarget < Const.DISTANCE_AWARENESS_HOR * Const.DISTANCE_AWARENESS_HOR
+                            && sqrVerticalDistanceWithTarget < Const.DISTANCE_AWARENESS_VER * Const.DISTANCE_AWARENESS_VER)
+                    {
+                        ai.State = new GetCloseToPlayerState(this, groupLeader);
+                        return;
+                    }
+                    else
+                    {
+                        GroupManager.Instance.RemoveFromCurrentGroupAndSync(npcController.Npc);
+                    }
+                }
+                // This should never happen, but you never know......
+                else
+                {
+                    GroupManager.Instance.RemoveFromCurrentGroupAndSync(npcController.Npc);
+                }
+            }
 
             // If we are outside, we need to move inside first!
             if (ai.isOutside)
@@ -158,7 +248,7 @@ namespace LethalBots.AI.AIStates
                 // Hold on a minute, we should empty our inventory first!
                 // NOTE: If a player leaves scrap by an entrance, the bot will collect
                 // as much as they can and return to the ship as a result!
-                if (ai.HasScrapInInventory())
+                if (ai.HasScrapInInventory() || (groupID != GroupManager.INVALID_GROUP_INDEX && GroupManager.Instance.DoesGroupHaveScrap(groupID)))
                 {
                     // Now, lets check if someone is assigned to transfer loot
                     bool shouldWalkLootToShip = true;
@@ -380,45 +470,6 @@ namespace LethalBots.AI.AIStates
             return LethalBotAI.IsItemScrap(item) && (!ai.IsGrabbableObjectInLoadout(item) || ai.HasDuplicateLoadoutItems(item, out _)); // Found a scrap item, great, we want to drop it!
         }
 
-        /// <summary>
-        /// Coroutine for making bot turn his body to look around him
-        /// </summary>
-        /// <returns></returns>
-        //protected override IEnumerator LookingAround()
-        //{
-        //    yield return null;
-        //    while (ai.State != null
-        //            && ai.State == this)
-        //    {
-        //        float freezeTimeRandom = Random.Range(Const.MIN_TIME_SEARCH_LOOKING_AROUND, Const.MAX_TIME_SEARCH_LOOKING_AROUND);
-        //        float angleRandom = Random.Range(0f, 360f);
-
-        //        // Only look around if we are already not doing so!
-        //        if (npcController.LookAtTarget.IsLookingForward())
-        //        {
-        //            // Convert angle to world position for looking
-        //            // Convert to local space (relative to the bot's forward direction)
-        //            Vector3 lookDirection = Quaternion.Euler(0, angleRandom, 0) * Vector3.forward;
-        //            float minLookDistance = 2f; // TODO: Move these into the Const class!
-        //            float maxLookDistance = 8f;
-        //            float lookDistance = Random.Range(minLookDistance, maxLookDistance); // Hardcoded for now
-        //            Vector3 lookAtPoint = npcController.Npc.gameplayCamera.transform.position + lookDirection * lookDistance;
-
-        //            // Ensure bot doesn’t look at unreachable areas (optional raycast check)
-        //            if (Physics.Raycast(npcController.Npc.thisController.transform.position, lookDirection, out RaycastHit hit, lookDistance, StartOfRound.Instance.collidersAndRoomMaskAndDefault))
-        //            {
-        //                lookAtPoint = hit.point; // Adjust to the first obstacle it hits
-        //            }
-
-        //            // Use OrderToLookAtPosition as SetTurnBodyTowardsDirection can be overriden!
-        //            npcController.OrderToLookAtPosition(lookAtPoint);
-        //        }
-        //        yield return new WaitForSeconds(freezeTimeRandom);
-        //    }
-
-        //    lookingAroundCoroutine = null;
-        //}
-
         /// <remarks>
         /// We give the position of the entrance we want a safe path to!<br/>
         /// We return null if we are not outside or our target entrance is null!
@@ -445,6 +496,45 @@ namespace LethalBots.AI.AIStates
                 return distSqrToEntrance < Const.DISTANCE_NEARBY_ENTRANCE * Const.DISTANCE_NEARBY_ENTRANCE;
             }
             return base.ShouldIgnoreInitialDangerCheck();
+        }
+
+        /// <summary>
+        /// Checks if the bot's inventory is full.
+        /// </summary>
+        /// <remarks>
+        /// This considers the bot's group as well.
+        /// </remarks>
+        /// <returns></returns>
+
+        private bool IsInventoryFull(int? groupID)
+        {
+            groupID ??= GroupManager.Instance.GetGroupId(npcController.Npc);
+            if (groupID != GroupManager.INVALID_GROUP_INDEX)
+            {
+                List<PlayerControllerB> groupMembers = GroupManager.Instance.GetGroupMembers(groupID.Value);
+                GrabbableObject[]? itemSlots = null;
+                foreach (PlayerControllerB member in groupMembers)
+                {
+                    // Make sure this member is valid
+                    if (member == null) continue;
+
+                    // Grab this member's inventory
+                    itemSlots = member.ItemSlots;
+                    int inventorySize = LethalBotAI.GetInventorySize(member, itemSlots);
+                    for (int i = 0; i < inventorySize; i++)
+                    {
+                        if (itemSlots[i] == null)
+                        {
+                            return false; // Someone has space in their inventory.
+                        }
+                    }
+                }
+
+                // Group is full, we should head back now.
+                return true;
+            }
+
+            return !ai.HasSpaceInInventory();
         }
 
         /// <summary>

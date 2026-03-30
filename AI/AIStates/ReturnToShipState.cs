@@ -3,6 +3,7 @@ using GameNetcodeStuff;
 using LethalBots.Constants;
 using LethalBots.Enums;
 using LethalBots.Managers;
+using LethalBots.Utils.Helpers;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -49,6 +50,14 @@ namespace LethalBots.AI.AIStates
 
         public override void OnEnterState()
         {
+            // Unless we are a group leader, entering this state means we are returning on our own!
+            PlayerControllerB ourController = npcController.Npc;
+            int groupID = GroupManager.Instance.GetGroupId(ourController);
+            if (groupID != GroupManager.INVALID_GROUP_INDEX && GroupManager.Instance.GetGroupLeader(groupID) != ourController)
+            {
+                GroupManager.Instance.RemoveFromCurrentGroupAndSync(ourController);
+            }
+
             // It doesn't matter if we had started the state before,
             // we should always recheck the nearest entrance
             targetEntrance = FindClosestEntrance(this.GetTargetShipPos());
@@ -94,6 +103,53 @@ namespace LethalBots.AI.AIStates
             else if (ai.searchForScrap.visitInProgress)
             {
                 ai.searchForScrap.StopSearch();
+            }
+
+            // Group logic
+            int groupID = GroupManager.Instance.GetGroupId(npcController.Npc);
+            if (groupID != GroupManager.INVALID_GROUP_INDEX)
+            {
+                // The group leader does their best to make sure no one falls behind.......
+                PlayerControllerB? groupLeader = GroupManager.Instance.GetGroupLeader(groupID);
+                if (groupLeader == npcController.Npc)
+                {
+                    // NOTE: We can safely assume that groupLeader is the same as npcController.Npc here
+                    PlayerControllerB? straggler = GroupManager.Instance.GetFurthestMemberFromCenter(groupID);
+                    if (straggler != null && !ai.AreWeExposed()) // straggler != groupLeader // actually, we allow ourself since the rest of the group may have fallen behind
+                    {
+                        Vector3 groupCenter = GroupManager.Instance.GetGroupCenter(groupLeader, groupID);
+                        float sqrHorizontalDistanceWithTarget = Vector3.Scale((groupCenter - straggler.transform.position), new Vector3(1, 0, 1)).sqrMagnitude;
+                        float sqrVerticalDistanceWithTarget = Vector3.Scale((groupCenter - straggler.transform.position), new Vector3(0, 1, 0)).sqrMagnitude;
+                        if (sqrHorizontalDistanceWithTarget > Const.MAX_STRAGGLER_DISTANCE_HOR * Const.MAX_STRAGGLER_DISTANCE_HOR
+                            || sqrVerticalDistanceWithTarget > Const.MAX_STRAGGLER_DISTANCE_VER * Const.MAX_STRAGGLER_DISTANCE_VER)
+                        {
+                            ai.StopMoving();
+                            return;
+                        }
+                    }
+                }
+                // Only the group leader should be in the searching for scrap state
+                else if (groupLeader != null)
+                {
+                    // Cheat a little here and let the bot have perfect knowledge of where their group leader is.....
+                    float sqrHorizontalDistanceWithTarget = Vector3.Scale((groupLeader.transform.position - npcController.Npc.transform.position), new Vector3(1, 0, 1)).sqrMagnitude;
+                    float sqrVerticalDistanceWithTarget = Vector3.Scale((groupLeader.transform.position - npcController.Npc.transform.position), new Vector3(0, 1, 0)).sqrMagnitude;
+                    if (sqrHorizontalDistanceWithTarget < Const.DISTANCE_AWARENESS_HOR * Const.DISTANCE_AWARENESS_HOR
+                            && sqrVerticalDistanceWithTarget < Const.DISTANCE_AWARENESS_VER * Const.DISTANCE_AWARENESS_VER)
+                    {
+                        ai.State = new GetCloseToPlayerState(this, groupLeader);
+                        return;
+                    }
+                    else
+                    {
+                        GroupManager.Instance.RemoveFromCurrentGroupAndSync(npcController.Npc);
+                    }
+                }
+                // This should never happen, but you never know......
+                else
+                {
+                    GroupManager.Instance.RemoveFromCurrentGroupAndSync(npcController.Npc);
+                }
             }
 
             // If we are inside, we need to move outside first!
@@ -281,6 +337,9 @@ namespace LethalBots.AI.AIStates
                     // Find a safe path to the ship
                     StartSafePathCoroutine();
 
+                    // Select and use items based on our current situation, if needed
+                    SelectBestItemFromInventory();
+
                     float sqrMagDistanceToSafePos = (this.safePathPos - npcController.Npc.transform.position).sqrMagnitude;
                     if (sqrMagDistanceToSafePos >= Const.DISTANCE_CLOSE_ENOUGH_TO_DESTINATION * Const.DISTANCE_CLOSE_ENOUGH_TO_DESTINATION)
                     {
@@ -342,14 +401,16 @@ namespace LethalBots.AI.AIStates
             });
         }
 
-        public override void OnSignalTranslatorMessageReceived(string message)
+        /// <inheritdoc cref="AIState.RegisterSignalTranslatorCommands"/>
+        public static new void RegisterSignalTranslatorCommands()
         {
             // Already heading back to ship!
-            if (message == "return")
+            SignalTranslatorCommandsManager.RegisterCommandForState<ReturnToShipState>(new SignalTranslatorCommand(Const.RETURN_COMMAND, (state, lethalBotAI, message) =>
             {
-                return;
-            }
-            base.OnSignalTranslatorMessageReceived(message);
+                ReturnToShipState returnToShipState = (ReturnToShipState)state;
+                returnToShipState.endIfOutside = false; // We need to head back the entire way!
+                return true;
+            }));
         }
 
         /// <summary>

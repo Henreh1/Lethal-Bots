@@ -477,7 +477,7 @@ namespace LethalBots.AI.AIStates
                     if (dangerRange.HasValue && (enemyPos - nodePos.Value).sqrMagnitude <= dangerRange * dangerRange)
                     {
                         // Do the actual traceline check
-                        Vector3 viewPos = checkLOSToTarget.eye?.position ?? enemyPos;
+                        Vector3 viewPos = checkLOSToTarget.eye != null ? checkLOSToTarget.eye.position : enemyPos;
                         if (!Physics.Linecast(viewPos + Vector3.up * 0.2f, simulatedHead, StartOfRound.Instance.collidersAndRoomMaskAndDefault, QueryTriggerInteraction.Ignore))
                         {
                             isNodeSafe = false;
@@ -589,8 +589,9 @@ namespace LethalBots.AI.AIStates
             }
 
             // Alright, look at the body first
-            npcController.OrderToLookAtPosition(playerBody.transform.position, EnumLookAtPriority.HIGH_PRIORITY);
-            yield return new WaitUntil(npcController.LookAtTarget.IsHeadAimingOnTarget);
+            npcController.OrderToLookAtPosition(playerBody.NetworkObject, EnumLookAtPriority.HIGH_PRIORITY);
+            yield return null;
+            yield return new WaitUntil(() => npcController.LookAtTarget.IsHeadAimingOnTarget() && npcController.LookAtTarget.hasBeenSightedIn);
 
             // Now we fake the revive time
             yield return new WaitForSeconds(ConfigVariables.reviveTime);
@@ -712,8 +713,9 @@ namespace LethalBots.AI.AIStates
             }
 
             // Alright, look at the body first
-            npcController.OrderToLookAtPosition(playerBody.transform.position, EnumLookAtPriority.HIGH_PRIORITY);
-            yield return new WaitForSeconds(2f); // Two seconds should be enough time!
+            npcController.OrderToLookAtPosition(playerBody.NetworkObject, EnumLookAtPriority.HIGH_PRIORITY);
+            yield return null;
+            yield return new WaitUntil(() => npcController.LookAtTarget.IsHeadAimingOnTarget() && npcController.LookAtTarget.hasBeenSightedIn);
 
             if (!ai.HasGrabbableObjectInInventory(FindZapGun, out int itemSlot))
             {
@@ -993,7 +995,7 @@ namespace LethalBots.AI.AIStates
                                                                 IsOutside = true,
                                                                 IndexNextPlayerObject = playerClientId
                                                             });
-            LethalBotManager.Instance.UpdateReviveCountServerRpc(lethalBotIdentity.IdIdentity + Plugin.PluginIrlPlayersCount);
+            LethalBotManager.Instance.UpdateReviveCountServerRpc(playerClientId);
             // Immediately change the number of living players
             // The host will update the number of living players when the bot is spawned
             StartOfRound.Instance.livingPlayers++;

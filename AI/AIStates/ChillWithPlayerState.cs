@@ -3,6 +3,7 @@ using HarmonyLib;
 using LethalBots.Constants;
 using LethalBots.Enums;
 using LethalBots.Managers;
+using LethalBots.Utils.Helpers;
 using Steamworks.Ugc;
 using UnityEngine;
 
@@ -17,6 +18,8 @@ namespace LethalBots.AI.AIStates
     /// </remarks>
     public class ChillWithPlayerState : AIState
     {
+        private CountdownTimer entranceDropTimer = new CountdownTimer();
+
         /// <summary>
         /// Represents the distance between the body of bot (<c>PlayerControllerB</c> position) and the target player (owner of bot), 
         /// only on axis x and z, y at 0, and squared
@@ -117,6 +120,72 @@ namespace LethalBots.AI.AIStates
                 ai.searchForScrap.StopSearch();
             }
 
+            // If we are in a group, only follow the group leader
+            int groupID = GroupManager.Instance.GetGroupId(npcController.Npc);
+            if (groupID != GroupManager.INVALID_GROUP_INDEX)
+            {
+                PlayerControllerB? groupLeader = GroupManager.Instance.GetGroupLeader(groupID);
+                if (groupLeader != null)
+                {
+                    if (groupLeader == npcController.Npc)
+                    {
+                        ai.State = new SearchingForScrapState(this);
+                        return;
+                    }
+                    else if (ai.targetPlayer != groupLeader)
+                    {
+                        ai.targetPlayer = groupLeader;
+                        targetLastKnownPosition = groupLeader.transform.position;
+                    }
+                }
+                // This should never happen, but if it does......
+                else
+                {
+                    GroupManager.Instance.RemoveFromCurrentGroupAndSync(npcController.Npc);
+                }
+            }
+
+            // If the player we were following is dropping off loot at an entrance, then lets do the same!
+            if (ai.isOutside && (!entranceDropTimer.HasStarted() || entranceDropTimer.Elapsed()) && ai.HasScrapInInventory())
+            {
+                // Now, lets check if someone is assigned to transfer loot
+                // NOTE: If the player we are following is transfering loot, then we don't drop ours!
+                entranceDropTimer.Start(0.5f); // Only do this every half a second!
+                if (LethalBotManager.Instance.LootTransferPlayers.Count > 0 
+                    && !LethalBotManager.Instance.LootTransferPlayers.Contains(ai.targetPlayer))
+                {
+                    bool areWeNearbyEntrance = false;
+                    foreach (EntranceTeleport entrance in LethalBotAI.EntrancesTeleportArray)
+                    {
+                        if (entrance.isEntranceToBuilding
+                            && (entrance.entrancePoint.position - npcController.Npc.transform.position).sqrMagnitude < Const.DISTANCE_NEARBY_ENTRANCE * Const.DISTANCE_NEARBY_ENTRANCE)
+                        {
+                            areWeNearbyEntrance = true;
+                            break;
+                        }
+                    }
+
+                    if (areWeNearbyEntrance)
+                    {
+                        // Stop moving while we drop our items
+                        ai.StopMoving();
+                        npcController.OrderToStopSprint();
+
+                        GrabbableObject? heldItem = ai.HeldItem;
+                        if (heldItem != null && DropScrapAtEntrance(heldItem))
+                        {
+                            ai.DropItem();
+                            LethalBotAI.DictJustDroppedItems.Remove(heldItem); //HACKHACK: Since DropItem set the just dropped item timer, we clear it here!
+                        }
+                        else if (ai.HasGrabbableObjectInInventory(DropScrapAtEntrance, out int objectSlot))
+                        {
+                            ai.SwitchItemSlotsAndSync(objectSlot);
+                        }
+                    }
+                }
+                return;
+            }
+
             VehicleController? vehicleController = ai.GetVehicleCruiserTargetPlayerIsIn();
             if (vehicleController != null)
             {
@@ -192,20 +261,50 @@ namespace LethalBots.AI.AIStates
             SetBotLookAt(noisePosition);
         }
 
-        // We are following a player, these messages mean nothing to us!
-        public override void OnSignalTranslatorMessageReceived(string message)
+        /// <inheritdoc cref="AIState.RegisterChatCommands"/>
+        public static new void RegisterChatCommands()
         {
-            return;
+            ChatCommandsManager.RegisterCommandForState<ChillWithPlayerState>(new ChatCommand(Const.GEAR_UP_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
+            {
+                lethalBotAI.State = new GrabLoadoutState(state);
+                return true;
+            }));
+
+            ChatCommandsManager.RegisterCommandForState<ChillWithPlayerState>(new ChatCommand(Const.USE_KEY_COMMAND, (state, lethalBotAI, playerWhoSentMessage, message, isVoice) =>
+            {
+                // Make sure we have a key or lockpicker
+                // Check what door the player is looking at
+                if (!lethalBotAI.HasKeyInInventory() 
+                    || !Physics.Raycast(new Ray(playerWhoSentMessage.gameplayCamera.transform.position, playerWhoSentMessage.gameplayCamera.transform.forward), out var hitInfo, 3f, 2816))
+                {
+                    return true;
+                }
+
+                // Get the door object from the raycast
+                DoorLock lockedDoor = hitInfo.transform.GetComponent<DoorLock>();
+                if (lockedDoor == null)
+                {
+                    TriggerPointToDoor component = hitInfo.transform.GetComponent<TriggerPointToDoor>();
+                    if (component != null)
+                    {
+                        lockedDoor = component.pointToDoor;
+                    }
+                }
+
+                // If the door is locked, we better open it!
+                if (lockedDoor != null && lockedDoor.isLocked && !lockedDoor.isPickingLock)
+                {
+                    lethalBotAI.State = new UseKeyOnLockedDoorState(state, lockedDoor);
+                }
+                return true;
+            }));
         }
 
-        public override void OnPlayerChatMessageReceived(string message, PlayerControllerB playerWhoSentMessage, bool isVoice)
+        /// <inheritdoc cref="AIState.RegisterSignalTranslatorCommands"/>
+        public static new void RegisterSignalTranslatorCommands()
         {
-            if (message.Contains("gear up"))
-            {
-                ai.State = new GrabLoadoutState(this);
-                return;
-            }
-            base.OnPlayerChatMessageReceived(message, playerWhoSentMessage, isVoice);
+            // We are following a player, these messages mean nothing to us!
+            SignalTranslatorCommandsManager.RegisterIgnoreDefaultForState<ChillWithPlayerState>();
         }
 
         private void SetBotLookAt(Vector3? position = null)
@@ -226,7 +325,7 @@ namespace LethalBots.AI.AIStates
                     PlayerControllerB? playerToLook = ai.CheckLOSForClosestPlayer(Const.LETHAL_BOT_FOV, (int)Const.DISTANCE_CLOSE_ENOUGH_HOR, (int)Const.DISTANCE_CLOSE_ENOUGH_HOR);
                     if (playerToLook != null)
                     {
-                        npcController.OrderToLookAtPlayer(playerToLook.playerEye.position);
+                        npcController.OrderToLookAtPlayer(playerToLook);
                     }
                     else
                     {
@@ -293,6 +392,15 @@ namespace LethalBots.AI.AIStates
                 return false;
             }
             return Plugin.Config.DropHeldEquipmentAtShip || LethalBotAI.IsItemScrap(item);
+        }
+
+        /// <summary>
+        /// Simple function that checks if the give <paramref name="item"/> is scrap.
+        /// </summary>
+        /// <inheritdoc cref="AIState.FindObject(GrabbableObject)"/>
+        protected bool DropScrapAtEntrance(GrabbableObject item)
+        {
+            return LethalBotAI.IsItemScrap(item) && (!ai.IsGrabbableObjectInLoadout(item) || ai.HasDuplicateLoadoutItems(item, out _)); // Found a scrap item, great, we want to drop it!
         }
     }
 }
