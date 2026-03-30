@@ -685,10 +685,10 @@ namespace LethalBots.AI.AIStates
             }
         }
 
-        public override Vector3? SelectSubjectTargetPoint(LookAtTarget lookAtTarget, NetworkObject subject, PlayerControllerB ourController)
+        public override Vector3? SelectSubjectTargetPoint(LookAtTarget lookAtTarget, NetworkObject? subject, PlayerControllerB ourController)
         {
             // Change where we are aiming based on the given network object
-            if (subject.TryGetComponent<EnemyAI>(out var enemyAI))
+            if (subject != null && subject.TryGetComponent<EnemyAI>(out var enemyAI))
             {
                 Collider? lookAtSubjectCollider = enemyAI == this.CurrentEnemy ? EnemyCollision : FindEnemyCollider(enemyAI, ourController.transform.position);
                 if (lookAtSubjectCollider != null)

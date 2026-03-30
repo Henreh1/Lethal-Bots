@@ -407,9 +407,13 @@ namespace LethalBots.AI
         /// <param name="subject">The network object we want to look at</param>
         /// <param name="ourController">The bot controller, provided for optimization reasons</param>
         /// <returns></returns>
-        public virtual Vector3? SelectSubjectTargetPoint(LookAtTarget lookAtTarget, NetworkObject subject, PlayerControllerB ourController)
+        public virtual Vector3? SelectSubjectTargetPoint(LookAtTarget lookAtTarget, NetworkObject? subject, PlayerControllerB ourController)
         {
             // Change where we are aiming based on the given network object
+            if (subject == null)
+            {
+                return null;
+            }
             Vector3? targetPos = null;
             if (subject.TryGetComponent<EnemyAI>(out var enemyAI))
             {
