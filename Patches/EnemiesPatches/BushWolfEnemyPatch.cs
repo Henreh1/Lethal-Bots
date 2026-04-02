@@ -5,6 +5,7 @@ using LethalBots.Managers;
 using LethalBots.Utils;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Reflection.Emit;
 using UnityEngine;
 using Label = System.Reflection.Emit.Label;
@@ -86,13 +87,24 @@ namespace LethalBots.Patches.EnemiesPatches
             var startIndex = -1;
             var codes = new List<CodeInstruction>(instructions);
 
+            // Target property: GameNetworkManager.Instance.localPlayerController
+            MethodInfo getGameNetworkManagerInstance = AccessTools.PropertyGetter(typeof(GameNetworkManager), "Instance");
+            FieldInfo localPlayerControllerField = AccessTools.Field(typeof(GameNetworkManager), "localPlayerController");
+
+            // Unity Object Equality Method
+            MethodInfo opEqualityMethod = AccessTools.Method(typeof(UnityEngine.Object), "op_Equality");
+
+            // Player Controller JumpToFearLevel Method
+            MethodInfo jumpToFearLevelMethod = AccessTools.Method(typeof(PlayerControllerB), "JumpToFearLevel");
+
             // ------------------------------------------------
             for (var i = 0; i < codes.Count - 4; i++)
             {
-                if (codes[i].ToString().StartsWith("ldfld GameNetcodeStuff.PlayerControllerB GameNetworkManager::localPlayerController") // 1589
-                    && codes[i + 2].ToString().StartsWith("ldfld GameNetcodeStuff.PlayerControllerB EnemyAI::targetPlayer") // 1591
-                    && codes[i + 3].ToString().StartsWith("call static bool UnityEngine.Object::op_Equality(UnityEngine.Object x, UnityEngine.Object y)") // 1592
-                    && codes[i + 4].ToString().StartsWith("brfalse")) // 1593
+                if (codes[i].Calls(getGameNetworkManagerInstance) // 1588
+                    && codes[i + 1].LoadsField(localPlayerControllerField) // 1589
+                    && codes[i + 2].IsLdarg(0)
+                    && codes[i + 3].LoadsField(PatchesUtil.FieldInfoTargetPlayer) // 1591
+                    && codes[i + 4].Calls(opEqualityMethod)) // 1593
                 {
                     startIndex = i;
                     break;
@@ -100,24 +112,21 @@ namespace LethalBots.Patches.EnemiesPatches
             }
             if (startIndex > -1)
             {
-                // If is localPlayerController
-                Label label = generator.DefineLabel();
-                codes[startIndex + 5].labels.Add(label);
+                // Replace the old GameNetworkManager.Instance.localPlayerController == this.targetPlayer check,
+                // and replace it with our IsPlayerLocalOrLethalBotOwnerLocalMethod
+                codes[startIndex].opcode = OpCodes.Nop;
+                codes[startIndex].operand = null;
+                codes[startIndex + 1].opcode = OpCodes.Nop;
+                codes[startIndex + 1].operand = null;
 
-                codes[startIndex + 4].opcode = OpCodes.Brtrue;
-                codes[startIndex + 4].operand = label;
-                //---------------------------
-                // or
-                // If is bot owned by localPlayerController
-                List<CodeInstruction> codesToAdd = new List<CodeInstruction>
-                {
-                    new CodeInstruction(OpCodes.Ldarg_0),
-                    new CodeInstruction(OpCodes.Ldfld, PatchesUtil.FieldInfoTargetPlayer),
-                    new CodeInstruction(OpCodes.Call, PatchesUtil.IsPlayerLethalBotOwnerLocalMethod),
-                    new CodeInstruction(OpCodes.Brfalse, codes[startIndex + 11].labels.First()) // br to 1600
-                };
-                //-----------------------------
-                codes.InsertRange(startIndex + 5, codesToAdd);
+                // If is localPlayerController or bot owned by localPlayerController
+                // In order to preserve labels, we just replace the instructions instead of removing and inserting new ones
+                codes[startIndex + 2].opcode = OpCodes.Ldarg_0;
+                codes[startIndex + 2].operand = null;
+                codes[startIndex + 3].opcode = OpCodes.Ldfld;
+                codes[startIndex + 3].operand = PatchesUtil.FieldInfoTargetPlayer;
+                codes[startIndex + 4].opcode = OpCodes.Call;
+                codes[startIndex + 4].operand = PatchesUtil.IsPlayerLocalOrLethalBotOwnerLocalMethod;
                 startIndex = -1;
             }
             else
@@ -128,10 +137,11 @@ namespace LethalBots.Patches.EnemiesPatches
             // -----------------------------------------------------------------------
             for (var i = 0; i < codes.Count - 4; i++)
             {
-                if (codes[i].ToString().StartsWith("ldfld GameNetcodeStuff.PlayerControllerB GameNetworkManager::localPlayerController") // 1604
-                    && codes[i + 2].ToString().StartsWith("ldfld GameNetcodeStuff.PlayerControllerB BushWolfEnemy::draggingPlayer") // 1606
-                    && codes[i + 3].ToString().StartsWith("call static bool UnityEngine.Object::op_Equality(UnityEngine.Object x, UnityEngine.Object y)") // 1607
-                    && codes[i + 4].ToString().StartsWith("brfalse")) // 1608
+                if (codes[i].Calls(getGameNetworkManagerInstance) // 1603
+                    && codes[i + 1].LoadsField(localPlayerControllerField) // 1604
+                    && codes[i + 2].IsLdarg(0)
+                    && codes[i + 3].LoadsField(PatchesUtil.FieldInfoDraggingPlayer) // 1606
+                    && codes[i + 4].Calls(opEqualityMethod)) // 1608
                 {
                     startIndex = i;
                     break;
@@ -139,24 +149,21 @@ namespace LethalBots.Patches.EnemiesPatches
             }
             if (startIndex > -1)
             {
-                // If is localPlayerController
-                Label label = generator.DefineLabel();
-                codes[startIndex + 5].labels.Add(label);
+                // Replace the old GameNetworkManager.Instance.localPlayerController == this.targetPlayer check,
+                // and replace it with our IsPlayerLocalOrLethalBotOwnerLocalMethod
+                codes[startIndex].opcode = OpCodes.Nop;
+                codes[startIndex].operand = null;
+                codes[startIndex + 1].opcode = OpCodes.Nop;
+                codes[startIndex + 1].operand = null;
 
-                codes[startIndex + 4].opcode = OpCodes.Brtrue;
-                codes[startIndex + 4].operand = label;
-                //---------------------------
-                // or
-                // If is bot owned by localPlayerController
-                List<CodeInstruction> codesToAdd = new List<CodeInstruction>
-                {
-                    new CodeInstruction(OpCodes.Ldarg_0),
-                    new CodeInstruction(OpCodes.Ldfld, PatchesUtil.FieldInfoDraggingPlayer),
-                    new CodeInstruction(OpCodes.Call, PatchesUtil.IsPlayerLethalBotOwnerLocalMethod),
-                    new CodeInstruction(OpCodes.Brfalse, codes[startIndex + 10].labels.First()) // br to 1614
-                };
-                //-----------------------------
-                codes.InsertRange(startIndex + 5, codesToAdd);
+                // If is localPlayerController or bot owned by localPlayerController
+                // In order to preserve labels, we just replace the instructions instead of removing and inserting new ones
+                codes[startIndex + 2].opcode = OpCodes.Ldarg_0;
+                codes[startIndex + 2].operand = null;
+                codes[startIndex + 3].opcode = OpCodes.Ldfld;
+                codes[startIndex + 3].operand = PatchesUtil.FieldInfoDraggingPlayer;
+                codes[startIndex + 4].opcode = OpCodes.Call;
+                codes[startIndex + 4].operand = PatchesUtil.IsPlayerLocalOrLethalBotOwnerLocalMethod;
                 startIndex = -1;
             }
             else
@@ -167,10 +174,11 @@ namespace LethalBots.Patches.EnemiesPatches
             // -----------------------------------------------------------------------
             for (var i = 0; i < codes.Count - 4; i++)
             {
-                if (codes[i].ToString().StartsWith("ldfld GameNetcodeStuff.PlayerControllerB GameNetworkManager::localPlayerController") // 1681
-                    && codes[i + 2].ToString().StartsWith("ldfld GameNetcodeStuff.PlayerControllerB EnemyAI::targetPlayer") // 1683
-                    && codes[i + 3].ToString().StartsWith("call static bool UnityEngine.Object::op_Equality(UnityEngine.Object x, UnityEngine.Object y)")
-                    && codes[i + 4].ToString().StartsWith("brfalse")) // 1685
+                if (codes[i].Calls(getGameNetworkManagerInstance) // 1588
+                    && codes[i + 1].LoadsField(localPlayerControllerField) // 1589
+                    && codes[i + 2].IsLdarg(0)
+                    && codes[i + 3].LoadsField(PatchesUtil.FieldInfoTargetPlayer) // 1591
+                    && codes[i + 4].Calls(opEqualityMethod)) // 1593
                 {
                     startIndex = i;
                     break;
@@ -178,24 +186,21 @@ namespace LethalBots.Patches.EnemiesPatches
             }
             if (startIndex > -1)
             {
-                // If is localPlayerController
-                Label label = generator.DefineLabel();
-                codes[startIndex + 5].labels.Add(label);
+                // Replace the old GameNetworkManager.Instance.localPlayerController == this.targetPlayer check,
+                // and replace it with our IsPlayerLocalOrLethalBotOwnerLocalMethod
+                codes[startIndex].opcode = OpCodes.Nop;
+                codes[startIndex].operand = null;
+                codes[startIndex + 1].opcode = OpCodes.Nop;
+                codes[startIndex + 1].operand = null;
 
-                codes[startIndex + 4].opcode = OpCodes.Brtrue;
-                codes[startIndex + 4].operand = label;
-                //---------------------------
-                // or
-                // If is bot owned by localPlayerController
-                List<CodeInstruction> codesToAdd = new List<CodeInstruction>
-                {
-                    new CodeInstruction(OpCodes.Ldarg_0),
-                    new CodeInstruction(OpCodes.Ldfld, PatchesUtil.FieldInfoTargetPlayer),
-                    new CodeInstruction(OpCodes.Call, PatchesUtil.IsPlayerLethalBotOwnerLocalMethod),
-                    new CodeInstruction(OpCodes.Brfalse, codes[startIndex + 331].labels.First()) // br to 2012
-                };
-                //-----------------------------
-                codes.InsertRange(startIndex + 5, codesToAdd);
+                // If is localPlayerController or bot owned by localPlayerController
+                // In order to preserve labels, we just replace the instructions instead of removing and inserting new ones
+                codes[startIndex + 2].opcode = OpCodes.Ldarg_0;
+                codes[startIndex + 2].operand = null;
+                codes[startIndex + 3].opcode = OpCodes.Ldfld;
+                codes[startIndex + 3].operand = PatchesUtil.FieldInfoTargetPlayer;
+                codes[startIndex + 4].opcode = OpCodes.Call;
+                codes[startIndex + 4].operand = PatchesUtil.IsPlayerLocalOrLethalBotOwnerLocalMethod;
                 startIndex = -1;
             }
             else
@@ -206,9 +211,11 @@ namespace LethalBots.Patches.EnemiesPatches
             // -----------------------------------------------------------------------
             for (var i = 0; i < codes.Count - 4; i++)
             {
-                if (codes[i].ToString().StartsWith("call static GameNetworkManager GameNetworkManager::get_Instance()") // 1686
-                    && codes[i + 1].ToString().StartsWith("ldfld GameNetcodeStuff.PlayerControllerB GameNetworkManager::localPlayerController") // 1687
-                    && codes[i + 4].ToString().StartsWith("callvirt void GameNetcodeStuff.PlayerControllerB::JumpToFearLevel(")) // 1690
+                if (codes[i].Calls(getGameNetworkManagerInstance) // 1686
+                    && codes[i + 1].LoadsField(localPlayerControllerField) // 1687
+                    && codes[i + 2].opcode == OpCodes.Ldc_R4 && codes[i + 2].operand is float f && f == 1f
+                    && codes[i + 3].opcode == OpCodes.Ldc_I4_1
+                    && codes[i + 4].Calls(jumpToFearLevelMethod)) // 1690
                 {
                     startIndex = i;
                     break;
@@ -230,10 +237,11 @@ namespace LethalBots.Patches.EnemiesPatches
             // ------------------------------------------------ (upperSpineLocalPoint 1)
             for (var i = 0; i < codes.Count - 4; i++)
             {
-                if (codes[i].ToString().StartsWith("ldfld GameNetcodeStuff.PlayerControllerB GameNetworkManager::localPlayerController") // 2036
-                    && codes[i + 2].ToString().StartsWith("ldfld GameNetcodeStuff.PlayerControllerB EnemyAI::targetPlayer")
-                    && codes[i + 3].ToString().StartsWith("call static bool UnityEngine.Object::op_Equality(UnityEngine.Object x, UnityEngine.Object y)")
-                    && codes[i + 4].ToString().StartsWith("brfalse")) // 2040
+                if (codes[i].Calls(getGameNetworkManagerInstance) // 1588
+                    && codes[i + 1].LoadsField(localPlayerControllerField) // 1589
+                    && codes[i + 2].IsLdarg(0)
+                    && codes[i + 3].LoadsField(PatchesUtil.FieldInfoTargetPlayer) // 1591
+                    && codes[i + 4].Calls(opEqualityMethod)) // 2040
                 {
                     startIndex = i;
                     break;
@@ -241,24 +249,21 @@ namespace LethalBots.Patches.EnemiesPatches
             }
             if (startIndex > -1)
             {
-                // If is localPlayerController
-                Label label = generator.DefineLabel();
-                codes[startIndex + 5].labels.Add(label);
+                // Replace the old GameNetworkManager.Instance.localPlayerController == this.targetPlayer check,
+                // and replace it with our IsPlayerLocalOrLethalBotOwnerLocalMethod
+                codes[startIndex].opcode = OpCodes.Nop;
+                codes[startIndex].operand = null;
+                codes[startIndex + 1].opcode = OpCodes.Nop;
+                codes[startIndex + 1].operand = null;
 
-                codes[startIndex + 4].opcode = OpCodes.Brtrue;
-                codes[startIndex + 4].operand = label;
-                //---------------------------
-                // or
-                // If is bot owned by localPlayerController
-                List<CodeInstruction> codesToAdd = new List<CodeInstruction>
-                {
-                    new CodeInstruction(OpCodes.Ldarg_0),
-                    new CodeInstruction(OpCodes.Ldfld, PatchesUtil.FieldInfoTargetPlayer),
-                    new CodeInstruction(OpCodes.Call, PatchesUtil.IsPlayerLethalBotOwnerLocalMethod),
-                    new CodeInstruction(OpCodes.Brfalse, codes[startIndex + 11].labels.First()) // br to 2047
-                };
-                //-----------------------------
-                codes.InsertRange(startIndex + 5, codesToAdd);
+                // If is localPlayerController or bot owned by localPlayerController
+                // In order to preserve labels, we just replace the instructions instead of removing and inserting new ones
+                codes[startIndex + 2].opcode = OpCodes.Ldarg_0;
+                codes[startIndex + 2].operand = null;
+                codes[startIndex + 3].opcode = OpCodes.Ldfld;
+                codes[startIndex + 3].operand = PatchesUtil.FieldInfoTargetPlayer;
+                codes[startIndex + 4].opcode = OpCodes.Call;
+                codes[startIndex + 4].operand = PatchesUtil.IsPlayerLocalOrLethalBotOwnerLocalMethod;
                 startIndex = -1;
             }
             else
@@ -269,10 +274,11 @@ namespace LethalBots.Patches.EnemiesPatches
             // ------------------------------------------------ (upperSpineLocalPoint 2)
             for (var i = 0; i < codes.Count - 4; i++)
             {
-                if (codes[i].ToString().StartsWith("ldfld GameNetcodeStuff.PlayerControllerB GameNetworkManager::localPlayerController") // 2098
-                    && codes[i + 2].ToString().StartsWith("ldfld GameNetcodeStuff.PlayerControllerB EnemyAI::targetPlayer")
-                    && codes[i + 3].ToString().StartsWith("call static bool UnityEngine.Object::op_Equality(UnityEngine.Object x, UnityEngine.Object y)")
-                    && codes[i + 4].ToString().StartsWith("brfalse")) // 2012
+                if (codes[i].Calls(getGameNetworkManagerInstance) // 1588
+                    && codes[i + 1].LoadsField(localPlayerControllerField) // 1589
+                    && codes[i + 2].IsLdarg(0)
+                    && codes[i + 3].LoadsField(PatchesUtil.FieldInfoTargetPlayer) // 1591
+                    && codes[i + 4].Calls(opEqualityMethod)) // 2040
                 {
                     startIndex = i;
                     break;
@@ -280,24 +286,21 @@ namespace LethalBots.Patches.EnemiesPatches
             }
             if (startIndex > -1)
             {
-                // If is localPlayerController
-                Label label = generator.DefineLabel();
-                codes[startIndex + 5].labels.Add(label);
+                // Replace the old GameNetworkManager.Instance.localPlayerController == this.targetPlayer check,
+                // and replace it with our IsPlayerLocalOrLethalBotOwnerLocalMethod
+                codes[startIndex].opcode = OpCodes.Nop;
+                codes[startIndex].operand = null;
+                codes[startIndex + 1].opcode = OpCodes.Nop;
+                codes[startIndex + 1].operand = null;
 
-                codes[startIndex + 4].opcode = OpCodes.Brtrue;
-                codes[startIndex + 4].operand = label;
-                //---------------------------
-                // or
-                // If is bot owned by localPlayerController
-                List<CodeInstruction> codesToAdd = new List<CodeInstruction>
-                {
-                    new CodeInstruction(OpCodes.Ldarg_0),
-                    new CodeInstruction(OpCodes.Ldfld, PatchesUtil.FieldInfoTargetPlayer),
-                    new CodeInstruction(OpCodes.Call, PatchesUtil.IsPlayerLethalBotOwnerLocalMethod),
-                    new CodeInstruction(OpCodes.Brfalse, codes[startIndex + 11].labels.First()) // br to 2109
-                };
-                //-----------------------------
-                codes.InsertRange(startIndex + 5, codesToAdd);
+                // If is localPlayerController or bot owned by localPlayerController
+                // In order to preserve labels, we just replace the instructions instead of removing and inserting new ones
+                codes[startIndex + 2].opcode = OpCodes.Ldarg_0;
+                codes[startIndex + 2].operand = null;
+                codes[startIndex + 3].opcode = OpCodes.Ldfld;
+                codes[startIndex + 3].operand = PatchesUtil.FieldInfoTargetPlayer;
+                codes[startIndex + 4].opcode = OpCodes.Call;
+                codes[startIndex + 4].operand = PatchesUtil.IsPlayerLocalOrLethalBotOwnerLocalMethod;
                 startIndex = -1;
             }
             else
@@ -308,10 +311,11 @@ namespace LethalBots.Patches.EnemiesPatches
             // ------------------------------------------------
             for (var i = 0; i < codes.Count - 4; i++)
             {
-                if (codes[i].ToString().StartsWith("ldfld GameNetcodeStuff.PlayerControllerB EnemyAI::targetPlayer") // 2118
-                    && codes[i + 2].ToString().StartsWith("ldfld GameNetcodeStuff.PlayerControllerB GameNetworkManager::localPlayerController")
-                    && codes[i + 3].ToString().StartsWith("call static bool UnityEngine.Object::op_Equality(UnityEngine.Object x, UnityEngine.Object y)")
-                    && codes[i + 4].ToString().StartsWith("brfalse")) // 2122
+                if (codes[i].IsLdarg(0)
+                    && codes[i + 1].LoadsField(PatchesUtil.FieldInfoTargetPlayer) // 2118
+                    && codes[i + 2].Calls(getGameNetworkManagerInstance) // 2119
+                    && codes[i + 3].LoadsField(localPlayerControllerField) // 2120
+                    && codes[i + 4].Calls(opEqualityMethod)) // 2122
                 {
                     startIndex = i;
                     break;
@@ -319,24 +323,21 @@ namespace LethalBots.Patches.EnemiesPatches
             }
             if (startIndex > -1)
             {
-                // If is localPlayerController
-                Label label = generator.DefineLabel();
-                codes[startIndex + 5].labels.Add(label);
+                // Replace the old GameNetworkManager.Instance.localPlayerController == this.targetPlayer check,
+                // and replace it with our IsPlayerLocalOrLethalBotOwnerLocalMethod
+                codes[startIndex].opcode = OpCodes.Nop;
+                codes[startIndex].operand = null;
+                codes[startIndex + 1].opcode = OpCodes.Nop;
+                codes[startIndex + 1].operand = null;
 
-                codes[startIndex + 4].opcode = OpCodes.Brtrue;
-                codes[startIndex + 4].operand = label;
-                //---------------------------
-                // or
-                // If is bot owned by localPlayerController
-                List<CodeInstruction> codesToAdd = new List<CodeInstruction>
-                {
-                    new CodeInstruction(OpCodes.Ldarg_0),
-                    new CodeInstruction(OpCodes.Ldfld, PatchesUtil.FieldInfoTargetPlayer),
-                    new CodeInstruction(OpCodes.Call, PatchesUtil.IsPlayerLethalBotOwnerLocalMethod),
-                    new CodeInstruction(OpCodes.Brfalse, codes[startIndex + 39].labels.First()) // br to 2157
-                };
-                //-----------------------------
-                codes.InsertRange(startIndex + 5, codesToAdd);
+                // If is localPlayerController or bot owned by localPlayerController
+                // In order to preserve labels, we just replace the instructions instead of removing and inserting new ones
+                codes[startIndex + 2].opcode = OpCodes.Ldarg_0;
+                codes[startIndex + 2].operand = null;
+                codes[startIndex + 3].opcode = OpCodes.Ldfld;
+                codes[startIndex + 3].operand = PatchesUtil.FieldInfoTargetPlayer;
+                codes[startIndex + 4].opcode = OpCodes.Call;
+                codes[startIndex + 4].operand = PatchesUtil.IsPlayerLocalOrLethalBotOwnerLocalMethod;
                 startIndex = -1;
             }
             else
@@ -347,10 +348,10 @@ namespace LethalBots.Patches.EnemiesPatches
             // -----------------------------------------------------------------------
             for (var i = 0; i < codes.Count - 18; i++)
             {
-                if (codes[i].ToString().StartsWith("call static GameNetworkManager GameNetworkManager::get_Instance()") // 2126
-                    && codes[i + 1].ToString().StartsWith("ldfld GameNetcodeStuff.PlayerControllerB GameNetworkManager::localPlayerController")
-                    && codes[i + 17].ToString().StartsWith("call static GameNetworkManager GameNetworkManager::get_Instance()") // 2143
-                    && codes[i + 18].ToString().StartsWith("ldfld GameNetcodeStuff.PlayerControllerB GameNetworkManager::localPlayerController"))
+                if (codes[i].Calls(getGameNetworkManagerInstance) // 2126
+                    && codes[i + 1].LoadsField(localPlayerControllerField)
+                    && codes[i + 17].Calls(getGameNetworkManagerInstance) // 2143
+                    && codes[i + 18].LoadsField(localPlayerControllerField))
                 {
                     startIndex = i;
                     break;

@@ -182,6 +182,9 @@ namespace LethalBots
 
         private void PatchBaseGame()
         {
+            // Fun fact: [HarmonyDebug] is amazing for debugging Harmony patches, it shows you in real time which patches are applied, and if they are applied correctly or not, and if not, why.
+            // I highly recommend using it when developing Harmony patches, it saved me a lot of time and headaches. You can enable it by adding [HarmonyDebug] above your patch class.
+
             // Game engine
             _harmony.PatchAll(typeof(AudioMixerPatch));
             _harmony.PatchAll(typeof(AudioReverbTriggerPatch));
@@ -206,6 +209,8 @@ namespace LethalBots
             _harmony.PatchAll(typeof(BushWolfEnemyPatch));
             _harmony.PatchAll(typeof(ButlerBeesEnemyAIPatch));
             _harmony.PatchAll(typeof(ButlerEnemyAIPatch));
+            _harmony.PatchAll(typeof(CadaverBloomAIPatch));
+            _harmony.PatchAll(typeof(CadaverGrowthAIPatch));
             _harmony.PatchAll(typeof(CaveDwellerAIPatch));
             _harmony.PatchAll(typeof(CentipedeAIPatch));
             _harmony.PatchAll(typeof(CrawlerAIPatch));

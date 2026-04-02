@@ -11,6 +11,7 @@ using LethalBots.Patches.MapPatches;
 using LethalBots.Patches.ModPatches.LethalPhones;
 using LethalBots.Patches.NpcPatches;
 using LethalBots.Utils;
+using LethalBots.Utils.Helpers;
 using ReservedItemSlotCore;
 using ReservedItemSlotCore.Data;
 using ReservedItemSlotCore.Patches;
@@ -176,6 +177,7 @@ namespace LethalBots.AI
         /// </remarks>
         public NetworkVariable<float> FearLevel = new NetworkVariable<float>(writePerm: NetworkVariableWritePermission.Owner);
         public NetworkVariable<bool> FearLevelIncreasing = new NetworkVariable<bool>(writePerm: NetworkVariableWritePermission.Owner);
+        public NetworkVariable<LethalBotInfection> BotInfectionData = new NetworkVariable<LethalBotInfection>(writePerm: NetworkVariableWritePermission.Owner);
 
         private string stateIndicatorServer = string.Empty;
         private Vector3 previousWantedDestination;
@@ -5020,28 +5022,34 @@ namespace LethalBots.AI
             PlayerControllerB lethalBotController = this.NpcController.Npc;
             if (base.IsOwner && lethalBotController.isPlayerControlled)
             {
+                // HACKHAC: V80 introduced some kind of bug with the ship bounds where the player can be considered outside of the ship while being inside,
+                // this is a hacky fix to prevent the bots from falling out of the ship!
                 bool wasInHangarShipRoom = lethalBotController.isInHangarShipRoom;
+                Vector3 playerPos = lethalBotController.transform.position;
+                Vector3 playerCameraPos = lethalBotController.gameplayCamera.transform.position;
+                Bounds shipBounds = instanceSOR.shipBounds.bounds;
+                Bounds shipStrictInnerRoomBounds = instanceSOR.shipStrictInnerRoomBounds.bounds;
                 if (!lethalBotController.isInElevator
-                    && instanceSOR.shipBounds.bounds.Contains(lethalBotController.transform.position))
+                    && (shipBounds.Contains(playerPos) || shipBounds.Contains(playerCameraPos)))
                 {
                     lethalBotController.isInElevator = true;
                 }
 
                 if (lethalBotController.isInElevator
                     && !wasInHangarShipRoom
-                    && instanceSOR.shipStrictInnerRoomBounds.bounds.Contains(lethalBotController.transform.position))//&& instanceSOR.shipInnerRoomBounds.bounds.Contains(lethalBotController.transform.position)
+                    && (shipStrictInnerRoomBounds.Contains(playerPos) || shipStrictInnerRoomBounds.Contains(playerCameraPos)))//&& instanceSOR.shipInnerRoomBounds.bounds.Contains(lethalBotController.transform.position)
                 {
                     lethalBotController.isInHangarShipRoom = true;
                     this.isInsidePlayerShip = true;
                 }
                 else if (lethalBotController.isInElevator
-                    && !instanceSOR.shipBounds.bounds.Contains(lethalBotController.transform.position))
+                    && !shipBounds.Contains(playerPos) 
+                    && !shipBounds.Contains(playerCameraPos))
                 {
                     lethalBotController.isInElevator = false;
                     lethalBotController.isInHangarShipRoom = false;
                     this.isInsidePlayerShip = false;
                     wasInHangarShipRoom = false;
-
                     if (!this.AreHandsFree())
                     {
                         lethalBotController.SetItemInElevator(droppedInShipRoom: false, droppedInElevator: false, HeldItem);
@@ -6919,7 +6927,7 @@ namespace LethalBots.AI
         /// <summary>
         /// Copied from <c>PlayerControllerB</c>, makes the bot drop everthing held! 
         /// </summary>
-        public void DropAllHeldItems(bool itemsFall = true)
+        public void DropAllHeldItems(bool itemsFall = true, bool setInShip = false, bool setInElevator = false, Vector3 syncedPlayerPosition = default(Vector3), Vector3 syncedHeldObjectPosition = default(Vector3), Vector3 syncedHeldObjectRotation = default(Vector3), Vector3 syncedPlayerCamPosition = default(Vector3), Vector3 syncedPlayerCamRotation = default(Vector3))
         {
             PlayerControllerB lethalBotController = NpcController.Npc;
             GrabbableObject?[] itemSlots = lethalBotController.ItemSlots;
@@ -6930,7 +6938,7 @@ namespace LethalBots.AI
                 {
                     continue;
                 }
-                PlayerControllerBPatch.DropHeldItem_ReversePatch(lethalBotController, grabbableObject, itemsFall, false);
+                PlayerControllerBPatch.DropHeldItem_ReversePatch(lethalBotController, grabbableObject, itemsFall, false, syncedPlayerPosition, syncedHeldObjectPosition, syncedHeldObjectRotation, syncedPlayerCamPosition, syncedPlayerCamRotation, setInShip, setInElevator);
                 if (base.IsOwner)
                 {
                     lethalBotController.activatingItem = false;
@@ -6939,7 +6947,7 @@ namespace LethalBots.AI
             }
             if (lethalBotController.ItemOnlySlot)
             {
-                PlayerControllerBPatch.DropHeldItem_ReversePatch(lethalBotController, lethalBotController.ItemOnlySlot, itemsFall, false);
+                PlayerControllerBPatch.DropHeldItem_ReversePatch(lethalBotController, lethalBotController.ItemOnlySlot, itemsFall, false, syncedPlayerPosition, syncedHeldObjectPosition, syncedHeldObjectRotation, syncedPlayerCamPosition, syncedPlayerCamRotation, setInShip, setInElevator);
                 if (base.IsOwner)
                 {
                     lethalBotController.activatingItem = false;
@@ -8292,7 +8300,12 @@ namespace LethalBots.AI
             {
                 deathAnimation = -1;
             }
-            //StartOfRound.Instance.LocalPlayerDieEvent.Invoke(this, deathAnimation); // WHY ZEEKERSS, now I have to recreate a bunch of logic for the bots. :(
+
+            // WHY ZEEKERSS, now I have to recreate a bunch of logic for the bots. :(
+            // NOTE: Ok looking at the code, only one enemy in the game hooks into this, it uses the provided controller.
+            // I had to make a small transpiler patch to make sure it only uses the provided controller so it works with both the local player and bots.
+            // I hope other modders that use this even in the future only use the provided controller, otherwise things may break in very weird ways!
+            StartOfRound.Instance.LocalPlayerDieEvent.Invoke(lethalBotController, deathAnimation);
             lethalBotController.isPlayerDead = true;
             lethalBotController.isPlayerControlled = false;
             lethalBotController.thisPlayerModelArms.enabled = false;

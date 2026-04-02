@@ -19,6 +19,7 @@ using SpeechRecognitionAPI;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -1676,6 +1677,11 @@ namespace LethalBots.Managers
                 if (!lethalBotController.isPlayerDead)
                 {
                     instanceSOR.livingPlayers--; // Living bot was kicked, decrement living player count
+                    if (base.IsServer)
+                    {
+                        // Bot was kicked, mimic the same logic used when a player leaves or is kicked.
+                        StartOfRound.Instance.LocalPlayerDieEvent.Invoke(lethalBotController, 200);
+                    }
                 }
                 instanceSOR.connectedPlayersAmount--; // Connected bot was kicked, decrement connected player count
 
@@ -3610,6 +3616,12 @@ namespace LethalBots.Managers
                     //instanceSOR.connectedPlayersAmount -= 1;
                     continue;
                 }*/
+
+                if (base.IsServer)
+                { 
+                    // Mimic logic of the base game when a player leaves the server.
+                    StartOfRound.Instance.LocalPlayerDieEvent.Invoke(lethalBotController, 200); 
+                }
 
                 // Mod support!!!!
                 if (Plugin.IsModModelReplacementAPILoaded)
