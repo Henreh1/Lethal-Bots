@@ -28,6 +28,7 @@
         TransferLoot,
         RescueAndRevive,
         GrabLoadout,
-        CollectPurchasedItems
+        CollectPurchasedItems,
+        HealPlayer
     }
 }

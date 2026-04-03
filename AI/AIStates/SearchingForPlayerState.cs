@@ -73,6 +73,14 @@ namespace LethalBots.AI.AIStates
                 return;
             }
 
+            // Check to see if we can heal someone!
+            playerController = ai.LookingForPlayerToHeal();
+            if (playerController != null)
+            {
+                ai.State = new HealPlayerState(this, playerController);
+                return;
+            }
+
             // Check for object to grab
             if (ai.HasSpaceInInventory())
             {

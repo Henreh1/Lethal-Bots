@@ -231,6 +231,18 @@ namespace LethalBots.AI.AIStates
                 return;
             }
 
+            // Check to see if we can heal someone!
+            playerController = ai.LookingForPlayerToHeal(true, true);
+            if (playerController != null)
+            {
+                if (GetOffTerminal())
+                {
+                    return;
+                }
+                ai.State = new HealPlayerState(this, playerController);
+                return;
+            }
+
             // Bot drop item
             if (!ai.AreHandsFree() 
                 && FindObject(ai.HeldItem))

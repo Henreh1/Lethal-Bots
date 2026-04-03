@@ -70,10 +70,14 @@ namespace LethalBots.Patches.EnemiesPatches
         /// <param name="___lostPlayerInChase"></param>
         [HarmonyPatch("Update")]
         [HarmonyPostfix]
-        public static void Update_Postfix(CadaverBloomAI __instance, ref bool ___lostPlayerInChase)
+        public static void Update_Postfix(CadaverBloomAI __instance, 
+            ref bool ___lostPlayerInChase, 
+            ref float ___seePlayerMeter,
+            ref float ___timeAtLastHeardNoise,
+            ref float ___timeAtLastHitStun)
         {
             // Just like the base game, if the cadaver bloom is in a special animation, don't do anything.
-            if (__instance.inSpecialAnimation)
+            if (__instance.isEnemyDead || __instance.inSpecialAnimation)
             {
                 return;
             }
@@ -87,6 +91,14 @@ namespace LethalBots.Patches.EnemiesPatches
 
             // Reset the limiter
             updateLimiter.Invalidate();
+
+            // In the base game, this part of the code returns early.
+            bool flag = Time.realtimeSinceStartup - ___timeAtLastHeardNoise < 1.5f;
+		    bool flag2 = Time.realtimeSinceStartup - ___timeAtLastHitStun < 0.75f;
+		    if ((flag && (___lostPlayerInChase || ___seePlayerMeter < 0.07f)) || flag2 || __instance.stunNormalizedTimer > 0f)
+            {
+                return;
+            }
 
             // Just like the base game, limit the range.
             int range = 18;

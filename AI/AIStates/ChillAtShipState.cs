@@ -138,6 +138,14 @@ namespace LethalBots.AI.AIStates
                     ai.State = new CollectPurchasedItemsState(this);
                     return;
                 }
+
+                // Does someone need to be healed?
+                playerController = ai.LookingForPlayerToHeal(true, true);
+                if (playerController != null)
+                {
+                    ai.State = new HealPlayerState(this, playerController);
+                    return;
+                }
             }
 
             // Is the inverse teleporter on, we should use it!

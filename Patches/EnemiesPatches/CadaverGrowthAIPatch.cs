@@ -36,7 +36,10 @@ namespace LethalBots.Patches.EnemiesPatches
             {
                 var playerInfection = __instance.playerInfections[i];
                 PlayerControllerB playerController = StartOfRound.Instance.allPlayerScripts[i];
-                if (playerController != null && playerController != localPlayerController && playerInfection.hinderingPlayerMovement)
+                if (playerController != null 
+                    && playerController != localPlayerController 
+                    && LethalBotManager.Instance.IsPlayerLethalBot(playerController)
+                    && playerInfection.hinderingPlayerMovement)
                 {
                     playerController.isMovementHindered--;
                     if (playerController.overridePoisonValue)
@@ -111,14 +114,6 @@ namespace LethalBots.Patches.EnemiesPatches
         {
             // Mimic the local player logic for bots as well.
             PlayerControllerB sickPlayer = StartOfRound.Instance.allPlayerScripts[playerId];
-            // NEEDTOVALIDATE: I'm pretty sure the actual function already does this.......
-            //PlayerInfection obj = __instance.playerInfections[playerId];
-            //obj.faceSpores.SetFloat("BurstAmount", Mathf.Lerp(620f, 1200f, loudness));
-            //obj.faceSporesOutput = 0.8f;
-            //obj.faceSpores.transform.position = sickPlayer.bodyParts[0].position + sickPlayer.bodyParts[0].forward * 0.15f;
-            //obj.faceSpores.transform.rotation = sickPlayer.bodyParts[0].transform.rotation;
-            //obj.faceSpores.Play();
-
             LethalBotAI[] lethalBotAIs = LethalBotManager.Instance.GetLethalBotsAIOwnedByLocal();
             foreach (var lethalBotAI in lethalBotAIs)
             {
@@ -143,19 +138,21 @@ namespace LethalBots.Patches.EnemiesPatches
                         {
                             severe = true;
                         }
-                        __instance.InfectPlayer(lethalBotController, severe);
-                        __instance.InfectPlayerRpc((int)lethalBotController.playerClientId, severe);
+                        bool flag2 = severe || UnityEngine.Random.Range(0, 100) < 40;
+                        __instance.InfectPlayer(lethalBotController, severe, flag2);
+                        __instance.InfectPlayerRpc((int)lethalBotController.playerClientId, severe, flag2);
                     }
                 }
             }
         }
 
         // FIXME: The game uses StartOfRound.Instance.occlusionCuller.currentTile to find what tiles are active for the infection checks
-        // but the bot's don't have an occlusion culler, so I can't check if they are on an active tile or not.
+        // but the bots don't have an occlusion culler, so I can't check if they are on an active tile or not.
         // I need to see how the base game handles this for the local player, and mimic that logic for the bots as well.
         // UPDATE: After looking into it, it looks like the occlusionCuller.currentTile check is done as an optimization to avoid checking tiles the local player isn't on.
-        // I could just check the entire list of GrowthTiles, but that would be pretty bad for performance. For now, bots can't get infected this way, for now.
-        // I'm going to look into how  GrowthTile finds what tiles its on as I could use that logic to find what tile the bot is on and check if it's active or not.
+        // I could just check the entire list of GrowthTiles, but that would be pretty bad for performance. For now, bots can't get infected this way.
+        // I'm going to look into how GrowthTile finds what tiles its on as I could use that logic to find what tile the bot is on and check if it's active or not.
+        // UPDATE2: I just found out the base game only calls this function once every second. This is huge for the optimization side of things!
         //[HarmonyPatch("InfectPlayers")]
         //[HarmonyPostfix]
         //public static void InfectPlayers_Postfix(CadaverGrowthAI __instance)
@@ -217,12 +214,8 @@ namespace LethalBots.Patches.EnemiesPatches
             Vector3 position = playerScript.transform.position;
             for (int i = 0; i < __instance.bloomEnemies.Length; i++)
             {
-                if (__instance.bloomEnemies[i] == null)
-                {
-                    Plugin.LogError($"Cadaver growth AI: Tried to burst from player, but there are no bloom enemies on standby? index: {i}");
-                    return;
-                }
-                if (!__instance.bloomEnemies[i].hasBurst)
+                CadaverBloomAI? bloomAI = __instance.bloomEnemies[i];
+                if (bloomAI != null && !bloomAI.hasBurst)
                 {
                     // NOTE: DON'T DO THIS, the base game will do this. If we do this now, we risk breaking the flow of the base game's logic.
                     //__instance.bloomEnemies[i].BurstForth(playerScript, kill: true, burstPosition, burstRotation);
@@ -333,9 +326,10 @@ namespace LethalBots.Patches.EnemiesPatches
                                 float num2 = 2000f;
                                 for (int j = 0; j < StartOfRound.Instance.allPlayerScripts.Length; j++)
                                 {
-                                    if (StartOfRound.Instance.allPlayerScripts[j] != playerController)
+                                    PlayerControllerB otherPlayer = StartOfRound.Instance.allPlayerScripts[j];
+                                    if (otherPlayer != playerController)
                                     {
-                                        float num3 = Vector3.Distance(StartOfRound.Instance.allPlayerScripts[j].transform.position, playerController.transform.position);
+                                        float num3 = Vector3.Distance(otherPlayer.transform.position, playerController.transform.position);
                                         if (num3 < num2)
                                         {
                                             num2 = num3;
@@ -380,7 +374,7 @@ namespace LethalBots.Patches.EnemiesPatches
                         num4 = ((!(playerInfection.infectionMeter > 0.925f)) ? (num4 * 0.7f) : (num4 * 1.5f));
                     }
                     num4 *= Mathf.Lerp(1f, 0.85f, (float)___numberOfInfected / (float)StartOfRound.Instance.livingPlayers);
-                    num4 *= 1f + __instance.totalTimeSpentInPlants / 15f;
+                    num4 *= 1f + lethalBotInfection.totalTimeSpentInPlants / 15f;
                     bool flag2 = StartOfRound.Instance.connectedPlayersAmount == 0;
                     float num5 = Time.deltaTime * __instance.InfectionSpeedMultiplier * num4 * playerInfection.multiplier;
                     if (flag2)
@@ -393,7 +387,7 @@ namespace LethalBots.Patches.EnemiesPatches
                     }
                     playerInfection.infectionMeter = Mathf.Clamp(playerInfection.infectionMeter + num5, 0f, 1f);
                     lethalBotInfection.showSignsMeter += num5;
-                    if (playerInfection.infectionMeter > 0.55f && !flag2)
+                    if (playerInfection.infectionMeter > 0.35f && !flag2)
                     {
                         playerInfection.bloomOnDeath = true;
                     }
@@ -429,6 +423,29 @@ namespace LethalBots.Patches.EnemiesPatches
                             __instance.SyncInfectionMeterRpc((int)playerController.playerClientId, playerInfection.infectionMeter);
                         }
                     }
+                }
+            }
+        }
+
+        [HarmonyPatch("InfectPlayer")]
+        [HarmonyPostfix]
+        public static void InfectPlayer_Postfix(CadaverGrowthAI __instance, PlayerControllerB playerScript)
+        {
+            // Just like the base game, reset this value when the bot becomes infected
+            LethalBotAI? lethalBotAI = LethalBotManager.Instance.GetLethalBotAIIfLocalIsOwner(playerScript);
+            if (lethalBotAI != null)
+            {
+                lethalBotAI.BotInfectionData.Value.totalTimeSpentInPlants = 0f;
+            }
+
+            // The base game has a bug where it clears it for all players, we recreate that here!
+            LethalBotAI[] lethalBotAIs = LethalBotManager.Instance.GetLethalBotsAIOwnedByLocal();
+            foreach (var lethalBot in lethalBotAIs)
+            {
+                PlayerControllerB? lethalBotController = lethalBot?.NpcController?.Npc;
+                if (lethalBotController != null && lethalBotController != playerScript)
+                {
+                    lethalBot?.BotInfectionData.Value.totalTimeSpentInPlants = 0f;
                 }
             }
         }

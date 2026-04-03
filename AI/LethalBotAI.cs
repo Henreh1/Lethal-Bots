@@ -286,6 +286,14 @@ namespace LethalBots.AI
             this.enabled = true;
             addPlayerVelocityToDestination = 3f;
             
+            // Reset Network Variables
+            if (base.IsOwner)
+            {
+                FearLevel.Reset();
+                FearLevelIncreasing.Reset();
+                BotInfectionData.Reset(new LethalBotInfection());
+            }
+
             // Search coroutines
             searchForScrap = new LethalBotSearchRoutine(this);
 
@@ -4770,6 +4778,83 @@ namespace LethalBots.AI
             }
 
             return closestDeadPlayer;
+        }
+
+        /// <summary>
+        /// Check all player scripts for a player to heal and
+        /// if lethalBot is close and can see said player.
+        /// </summary>
+        /// <param name="ignoreLOS">Should we ignore line of sight when checking for a player to heal?</param>
+        /// <param name="shipOnly">Should we only consider players on the ship?</param>
+        /// <returns><c>PlayerControllerB</c> if lethalBot sees an player they can heal, else null.</returns>
+        public PlayerControllerB? LookingForPlayerToHeal(bool ignoreLOS = false, bool shipOnly = false)
+        {
+            // First things first, check if we need to be healed!
+            PlayerControllerB lethalBotController = NpcController.Npc;
+            if (HealPlayerState.CanHealPlayer(this, lethalBotController))
+            {
+                return lethalBotController;
+            }
+
+            // Fog reduce the visibility
+            float range = Const.LETHAL_BOT_HEAL_RANGE;
+            float proximityAwareness = Const.DISTANCE_CLOSE_ENOUGH_HOR;
+            float width = Const.LETHAL_BOT_FOV;
+            if (isOutside && !enemyType.canSeeThroughFog && TimeOfDay.Instance.currentLevelWeather == LevelWeatherType.Foggy)
+            {
+                range = Mathf.Clamp(range, 0, 30);
+            }
+
+            StartOfRound instanceSOR = StartOfRound.Instance;
+            Transform thisLethalBotCamera = this.NpcController.Npc.gameplayCamera.transform;
+            float currentClosestDistance = float.MaxValue;
+            PlayerControllerB? closestPlayer = null;
+            for (int i = 0; i < instanceSOR.allPlayerScripts.Length; i++)
+            {
+                // Check if they are a valid heal target
+                PlayerControllerB player = instanceSOR.allPlayerScripts[i];
+                if (!HealPlayerState.CanHealPlayer(this, player))
+                {
+                    continue;
+                }
+
+                // Only consider players on the ship
+                if (shipOnly 
+                    && !player.isInElevator 
+                    && !player.isInHangarShipRoom)
+                {
+                    continue;
+                }
+
+                // Target close enough ?
+                Vector3 cameraPlayerPosition = player.gameplayCamera.transform.position;
+                if ((cameraPlayerPosition - this.transform.position).sqrMagnitude > range * range)
+                {
+                    continue;
+                }
+
+                // Nothing in between to break line of sight ?
+                if (!ignoreLOS && Physics.Linecast(thisLethalBotCamera.position, cameraPlayerPosition, instanceSOR.collidersAndRoomMaskAndDefault))
+                {
+                    continue;
+                }
+
+                Vector3 vectorLethalBotToPlayer = cameraPlayerPosition - thisLethalBotCamera.position;
+                float distanceLethalBotToPlayer = Vector3.Distance(thisLethalBotCamera.position, cameraPlayerPosition);
+                if ((ignoreLOS || Vector3.Angle(thisLethalBotCamera.forward, vectorLethalBotToPlayer) < width || (proximityAwareness != -1 && distanceLethalBotToPlayer < proximityAwareness))
+                    && distanceLethalBotToPlayer < currentClosestDistance)
+                {
+                    // Target in FOV or proximity awareness range
+                    // Make sure we can actually reach them
+                    if (IsValidPathToTarget(player.transform.position))
+                    { 
+                        currentClosestDistance = distanceLethalBotToPlayer;
+                        closestPlayer = player;
+                    }
+                }
+            }
+
+            return closestPlayer;
         }
 
         /// <summary>

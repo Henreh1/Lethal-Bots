@@ -48,6 +48,14 @@ namespace LethalBots.AI.AIStates
                 return;
             }
 
+            // Check to see if we can heal someone!
+            playerController = ai.LookingForPlayerToHeal();
+            if (playerController != null)
+            {
+                ai.State = new HealPlayerState(this, playerController);
+                return;
+            }
+
             // TODO: If bot finds a key, bot should drop least valuable item in inventory and pick the key up
             Vector3? destination;
             // Check for object to grab

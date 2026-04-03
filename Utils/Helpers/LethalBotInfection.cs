@@ -16,12 +16,16 @@ namespace LethalBots.Utils.Helpers
         public float showSignsMeter;
         public float timeAtLastHealing;
         public float setPoison;
+        public float sprayOnPlayerMeter;
+        public float totalTimeSpentInPlants;
 
         public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
         {
             serializer.SerializeValue(ref showSignsMeter);
             serializer.SerializeValue(ref timeAtLastHealing);
             serializer.SerializeValue(ref setPoison);
+            serializer.SerializeValue(ref sprayOnPlayerMeter);
+            serializer.SerializeValue(ref totalTimeSpentInPlants);
         }
 
         public bool Equals(LethalBotInfection? other)
@@ -29,7 +33,9 @@ namespace LethalBots.Utils.Helpers
             return other != null &&
                    showSignsMeter == other.showSignsMeter &&
                    timeAtLastHealing == other.timeAtLastHealing &&
-                   setPoison == other.setPoison;
+                   setPoison == other.setPoison &&
+                   sprayOnPlayerMeter == other.sprayOnPlayerMeter &&
+                   totalTimeSpentInPlants == other.totalTimeSpentInPlants;
         }
 
         public override bool Equals(object obj)
@@ -39,7 +45,7 @@ namespace LethalBots.Utils.Helpers
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(showSignsMeter, timeAtLastHealing, setPoison);
+            return HashCode.Combine(showSignsMeter, timeAtLastHealing, setPoison, sprayOnPlayerMeter, totalTimeSpentInPlants);
         }
     }
 }

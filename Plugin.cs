@@ -252,6 +252,7 @@ namespace LethalBots
             _harmony.PatchAll(typeof(GrabbableObjectPatch));
             _harmony.PatchAll(typeof(RagdollGrabbableObjectPatch));
             _harmony.PatchAll(typeof(ShotgunItemPatch));
+            _harmony.PatchAll(typeof(SprayPaintItemPatch));
             _harmony.PatchAll(typeof(StunGrenadeItemPatch));
             _harmony.PatchAll(typeof(TetraChemicalItemPatch));
 
