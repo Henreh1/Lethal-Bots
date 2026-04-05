@@ -32,7 +32,7 @@ namespace LethalBots.Patches.ObjectsPatches
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static DeadBodyInfoMonitor GetOrCreateMonitor(DeadBodyInfo body)
         {
-            return lethalBotDeadBodyInfoMonitor.GetOrCreateValue(body);
+            return lethalBotDeadBodyInfoMonitor.GetValue(body, _ => new DeadBodyInfoMonitor());
         }
 
         /// <summary>

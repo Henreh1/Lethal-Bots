@@ -2710,88 +2710,69 @@ namespace LethalBots.AI
             // FIXME: Only a few enemies can be targeted since
             // I need to check when its a good idea to fight!
             bool isEnemyStunned = enemy.stunnedIndefinitely > 0f || enemy.stunNormalizedTimer > 0f;
-            switch (enemy.enemyType.enemyName)
+            if (enemy is CentipedeAI 
+                || enemy is MaskedPlayerEnemy 
+                || enemy is CrawlerAI
+                || enemy is HoarderBugAI)
             {
-                case "Centipede":
-                case "Masked":
-                case "Crawler":
-                case "Hoarding bug":
-                    return true;
-                case "Nutcracker":
-                    if ((hasRangedWeapon || isHumanPlayer || isEnemyStunned)
-                        && (enemy.currentBehaviourStateIndex == 2
-                            || (enemy is NutcrackerEnemyAI nutcracker
-                                && nutcrackerIsInspecting.Invoke(nutcracker))))
-                    {
-                        return true;
-                    }
-                    return false;
-                case "Flowerman":
-                case "Bunker Spider":
-                case "Baboon hawk":
-                case "Bush Wolf":
-                    return hasRangedWeapon || isHumanPlayer || isEnemyStunned;
-                case "Butler": // For now, don't kill them!
-                case "MouthDog":
-                case "Maneater":
-                    return isHumanPlayer;
-                case "ForestGiant":
-                    return false; // Don't even bother its suicide!
-                default:
-                    // Either they are not killable or not dangerous
-                    // return enemy.enemyType.canDie;
-                    return false; // NOTE: enemy.enemyType.canDie can be true on enemies that can't be killed by our weapons!
+                return true;
             }
-            /*switch(enemy.enemyType.enemyName)
+            else if (enemy is NutcrackerEnemyAI nutcracker 
+                && (hasRangedWeapon || isHumanPlayer || isEnemyStunned)
+                        && (enemy.currentBehaviourStateIndex == 2
+                            || nutcrackerIsInspecting.Invoke(nutcracker)))
             {
-                case "Masked":
-                case "Maneater":
-                case "Baboon hawk":
-                case "Hoarding bug":
-                case "Butler":
-                case "Centipede":
-                case "Flowerman":
-                case "Bush Wolf":
-                case "Crawler":
-                case "Bunker Spider":
-                case "ForestGiant":
-                case "MouthDog":
-                    return true;
-
-                // The Nutcraker is a special case were only certain times are they killable!
-                case "Nutcracker":
-                    if ((bool)AccessTools.Field(typeof(NutcrackerEnemyAI), "isInspecting").GetValue(enemy) ||
-                        (bool)AccessTools.Field(typeof(NutcrackerEnemyAI), "aimingGun").GetValue(enemy) ||
-                        (bool)AccessTools.Field(typeof(NutcrackerEnemyAI), "reloadingGun").GetValue(enemy))
-                    {
-                        return true;
-                    }
-                    return false;
-
-                case "Clay Surgeon":
-                case "Earth Leviathan":
-                case "RadMech":
-                case "Jester":
-                case "Spring":
-                case "Butler Bees":
-                case "Red Locust Bees":
-                case "Blob":
-                case "ImmortalSnail":
-                    return false;
-
-                // Set to false since this guy isn't really a threat!
-                case "Puffer":
-                    return false;
-
-                default:
-                    // Not killable or dangerous enemies
-
-                    // "Docile Locust Bees"
-                    // "Manticoil"
-                    // "Girl"
-                    // "Tulip Snake"
-                    return false;
-            }*/
+                return true;
+            }
+            else if (enemy is FlowermanAI 
+                || enemy is SandSpiderAI
+                || enemy is BaboonBirdAI
+                || enemy is BushWolfEnemy)
+            {
+                return hasRangedWeapon || isHumanPlayer || isEnemyStunned;
+            }
+            else if (enemy is ButlerEnemyAI 
+                || enemy is MouthDogAI
+                || enemy is CaveDwellerAI)
+            {
+                return isHumanPlayer;
+            }
+            else
+            {
+                return false;
+            }
+            //switch (enemy.enemyType.enemyName)
+            //{
+            //    case "Centipede":
+            //    case "Masked":
+            //    case "Crawler":
+            //    case "Hoarding bug":
+            //        return true;
+            //    case "Nutcracker":
+            //        if ((hasRangedWeapon || isHumanPlayer || isEnemyStunned)
+            //            && (enemy.currentBehaviourStateIndex == 2
+            //                || (enemy is NutcrackerEnemyAI nutcracker
+            //                    && nutcrackerIsInspecting.Invoke(nutcracker))))
+            //        {
+            //            return true;
+            //        }
+            //        return false;
+            //    case "Flowerman":
+            //    case "Bunker Spider":
+            //    case "Baboon hawk":
+            //    case "Bush Wolf":
+            //        return hasRangedWeapon || isHumanPlayer || isEnemyStunned;
+            //    case "Butler": // For now, don't kill them!
+            //    case "MouthDog":
+            //    case "Maneater":
+            //        return isHumanPlayer;
+            //    case "ForestGiant":
+            //        return false; // Don't even bother its suicide!
+            //    default:
+            //        // Either they are not killable or not dangerous
+            //        // return enemy.enemyType.canDie;
+            //        return false; // NOTE: enemy.enemyType.canDie can be true on enemies that can't be killed by our weapons!
+            //}
         }
 
         /// <summary>

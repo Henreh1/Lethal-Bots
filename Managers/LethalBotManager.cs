@@ -855,6 +855,8 @@ namespace LethalBots.Managers
             RegisterThreat(typeof(ButlerBeesEnemyAI), 20f, null, 15f); // Butler Bees
             RegisterThreat(typeof(BlobAI), 10f, null, 10f); // Blob
             RegisterThreat(typeof(BaboonBirdAI), 10f, 5f, 10f); // Annoying, Baboon Hawks......
+            RegisterThreat(typeof(PumaAI), 10f, null, 10f); // Feiopars
+            RegisterThreat(typeof(CadaverBloomAI), 20f, null, 20f); // Cadaver Bloom
 
             // Dynamic behavior threats
             // Old Birds!
@@ -1035,8 +1037,7 @@ namespace LethalBots.Managers
             //     _ => null   // No value for pathfinding
             // );
 
-            // Girl aka Ghost Girl is always ignored (for now), so skip or:
-            //RegisterThreat(typeof(DressGirlAI), (float?)null, (float?)null, (float?)null);
+            // Girl aka Ghost Girl
             RegisterThreat(typeof(DressGirlAI), 
                 fq => fq.EnemyAI is DressGirlAI ghostGirl && fq.Bot is LethalBotAI lethalBotAI && ghostGirl.hauntingPlayer == lethalBotAI.NpcController.Npc && ghostGirl.currentBehaviourStateIndex > 0 ? 40f : null,
                 _ => null,  // No value for mission control

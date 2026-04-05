@@ -24,7 +24,7 @@ namespace LethalBots.Utils.Helpers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static UpdateLimiter GetOrCreateMonitor(EnemyAI ai, float updateInterval = 0.5f)
         {
-            return nextUpdateList.GetValue(ai, key => new UpdateLimiter(updateInterval));
+            return nextUpdateList.GetValue(ai, _ => new UpdateLimiter(updateInterval));
         }
 
         /// <summary>

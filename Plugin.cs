@@ -223,6 +223,7 @@ namespace LethalBots
             _harmony.PatchAll(typeof(MaskedPlayerEnemyPatch));
             _harmony.PatchAll(typeof(MouthDogAIPatch));
             _harmony.PatchAll(typeof(NutcrackerEnemyAIPatch));
+            _harmony.PatchAll(typeof(PumaAIPatch));
             _harmony.PatchAll(typeof(RadMechAIPatch));
             _harmony.PatchAll(typeof(RadMechMissilePatch));
             _harmony.PatchAll(typeof(RedLocustBeesPatch));
