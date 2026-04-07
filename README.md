@@ -230,6 +230,10 @@ NOTE: All players, "humans and bots," must be on the ship before the bot will vo
 </br>The bot is lost in the facility and will try to find a way out.
 </br>They will wander around the facility, calling out for help.
 
+</br>HealPlayer
+</br>The bot has chosen to heal a player.
+</br>For now, the only healing option is weed killer..........
+
 ## On a more serious note
 This mod is very alpha and I still need some polishing.
 <br/>I'm just happy to share this project with you, in hope that you find it fun and enjoyable.
