@@ -168,10 +168,15 @@ namespace LethalBots.Patches.EnemiesPatches
                 PlayerControllerB? lethalBotController = lethalBotAI.NpcController?.Npc;
                 if (lethalBotController != null
                     && lethalBotController.isPlayerControlled
-                    && !lethalBotController.isPlayerDead)
+                    && !lethalBotController.isPlayerDead
+                    && lethalBotController.isInsideFactory)
                 {
-                    LethalBotInfection lethalBotInfection = lethalBotAI.BotInfectionData.Value;
                     Tile? currentTile = lethalBotAI.DunGenTileTracker.currentTile;
+                    if (currentTile == null)
+                    {
+                        continue;
+                    }
+                    LethalBotInfection lethalBotInfection = lethalBotAI.BotInfectionData.Value;
                     bool infected = __instance.playerInfections[lethalBotController.playerClientId].infected;
                     bool flag = false;
                     bool flag2 = false;
@@ -250,10 +255,10 @@ namespace LethalBots.Patches.EnemiesPatches
                             {
                                 lethalBotInfection.localPlayerImmunityTimer += __instance.InfectIntervalTime;
                                 lethalBotInfection.totalTimeSpentInPlants += __instance.InfectIntervalTime;
-                                if (StartOfRound.Instance.connectedPlayersAmount == 0)
-                                {
-                                    //flag4 = true;
-                                }
+                                //if (StartOfRound.Instance.connectedPlayersAmount == 0)
+                                //{
+                                //    //flag4 = true;
+                                //}
                             }
                             lethalBotInfection.stoodInWeedsLastCheck = true;
                         }
@@ -312,6 +317,7 @@ namespace LethalBots.Patches.EnemiesPatches
             yield return new WaitForEndOfFrame();
             if (player != null 
                 && player.isPlayerControlled 
+                && !player.isPlayerDead
                 && playerInfection.infected 
                 && playerInfection.infectionMeter > 0.85f 
                 && StartOfRound.Instance.livingPlayers > 1
@@ -368,7 +374,7 @@ namespace LethalBots.Patches.EnemiesPatches
             foreach (var lethalBotAI in lethalBotAIs)
             {
                 PlayerControllerB? lethalBotController = lethalBotAI?.NpcController?.Npc;
-                if (lethalBotController != null)
+                if (lethalBotController != null && lethalBotController != playerScript)
                 {
                     lethalBotAI?.StartCoroutine(BurstFromPlayerCoroutine(__instance, lethalBotController, num));
                 }
