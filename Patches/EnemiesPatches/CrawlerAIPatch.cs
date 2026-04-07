@@ -4,6 +4,7 @@ using LethalBots.AI;
 using LethalBots.Constants;
 using LethalBots.Managers;
 using LethalBots.Utils;
+using LethalBots.Utils.Helpers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection.Emit;
@@ -18,8 +19,6 @@ namespace LethalBots.Patches.EnemiesPatches
     [HarmonyAfter(Const.MORECOMPANY_GUID)]
     public class CrawlerAIPatch
     {
-        private static float nextUpdateCheck;
-
         /// <summary>
         /// <inheritdoc cref="ButlerBeesEnemyAIPatch.OnCollideWithPlayer_Transpiler"/>
         /// </summary>
@@ -170,13 +169,14 @@ namespace LethalBots.Patches.EnemiesPatches
             }
 
             // Optimization, only run this every half a second!
-            nextUpdateCheck += Time.deltaTime;
-            if (nextUpdateCheck < 0.5f)
+            UpdateLimiter updateLimiter = UpdateLimiter.GetOrCreateMonitor(__instance);
+            if (!updateLimiter.CanUpdate())
             {
                 return;
             }
 
-            nextUpdateCheck = 0f;
+            // Reset the limiter
+            updateLimiter.Invalidate();
             LethalBotAI[] lethalBotAIs = LethalBotManager.Instance.GetLethalBotsAIOwnedByLocal();
             foreach (LethalBotAI lethalBotAI in lethalBotAIs)
             {

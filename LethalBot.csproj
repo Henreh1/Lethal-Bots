@@ -6,7 +6,7 @@
     <AssemblyName>LethalBots</AssemblyName>
     <Product>LethalBots</Product>
     <!-- Change to whatever version you're currently on. This will be used by tcli when building our Thunderstore package. -->
-    <Version>4.0.0</Version>
+    <Version>5.0.0</Version>
   </PropertyGroup>
 
   <!-- Project Properties -->
@@ -119,6 +119,9 @@
     <Reference Include="Assembly-CSharp-firstpass">
       <HintPath>lib\Assembly-CSharp-firstpass.dll</HintPath>
     </Reference>
+	<Reference Include="DunGen">
+		<HintPath>lib\DunGen.dll</HintPath>
+	</Reference>
     <Reference Include="BetterEmotes">
       <HintPath>lib\mods\BetterEmotes.dll</HintPath>
     </Reference>
@@ -185,6 +188,9 @@
     <Reference Include="Unity.Animation.Rigging">
       <HintPath>lib\Unity.Animation.Rigging.dll</HintPath>
     </Reference>
+	<Reference Include="Unity.RenderPipelines.HighDefinition.Runtime">
+		<HintPath>lib\Unity.RenderPipelines.HighDefinition.Runtime.dll</HintPath>
+	</Reference>
     <Reference Include="Unity.Collections">
       <HintPath>lib\Unity.Collections.dll</HintPath>
     </Reference>

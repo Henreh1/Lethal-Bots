@@ -8,12 +8,37 @@ namespace LethalBots.Utils.Helpers
     /// <summary>
     /// Helper class that allows me to limit how often a patch is run!
     /// </summary>
-    /// <remarks>
-    /// I should probably move this into its own file
-    /// </remarks>
-    internal class UpdateLimiter
+    public class UpdateLimiter
     {
-        private float nextUpdateCheck;
+        // Static variables
+        // Conditional Weak Table since when the EnemyAI is removed, the table automatically cleans itself!
+        private static ConditionalWeakTable<EnemyAI, UpdateLimiter> nextUpdateList = new ConditionalWeakTable<EnemyAI, UpdateLimiter>();
+
+        /// <summary>
+        /// Helper function that retrieves the <see cref="UpdateLimiter"/>
+        /// for the given <see cref="EnemyAI"/>
+        /// </summary>
+        /// <param name="ai"></param>
+        /// <param name="updateInterval">The amount of time that should pass between calls to the patch</param>
+        /// <returns>The <see cref="UpdateLimiter"/> associated with the given <see cref="EnemyAI"/></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static UpdateLimiter GetOrCreateMonitor(EnemyAI ai, float updateInterval = 0.5f)
+        {
+            return nextUpdateList.GetValue(ai, _ => new UpdateLimiter(updateInterval));
+        }
+
+        /// <summary>
+        /// Removes the specified enemy AI instance from the monitoring list.
+        /// </summary>
+        /// <param name="ai">The enemy AI instance to remove from monitoring. Cannot be null.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void RemoveMonitor(EnemyAI ai)
+        {
+            nextUpdateList.Remove(ai);
+        }
+
+        // Memeber variables
+        private readonly CountdownTimer nextUpdateTimer = new CountdownTimer();
         private float updateInterval;
 
         internal UpdateLimiter(float updateInterval = 0.5f)
@@ -25,19 +50,13 @@ namespace LethalBots.Utils.Helpers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool CanUpdate()
         {
-            return nextUpdateCheck >= updateInterval;
+            return !nextUpdateTimer.HasStarted() || nextUpdateTimer.Elapsed();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Invalidate()
         {
-            nextUpdateCheck = 0f;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Update(float deltaTime)
-        {
-            nextUpdateCheck += deltaTime;
+            nextUpdateTimer.Start(updateInterval);
         }
     }
 }

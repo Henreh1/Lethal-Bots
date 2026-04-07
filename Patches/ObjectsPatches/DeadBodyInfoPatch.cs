@@ -21,7 +21,7 @@ namespace LethalBots.Patches.ObjectsPatches
     public class DeadBodyInfoPatch
     {
         // Conditional Weak Table since when the DeadBodyInfo is removed, the table automatically cleans itself!
-        private static ConditionalWeakTable<DeadBodyInfo, DeadBodyInfoMonitor> lethalBotDeadBodyInfoMonitor = new ConditionalWeakTable<DeadBodyInfo, DeadBodyInfoMonitor>();
+        public static readonly ConditionalWeakTable<DeadBodyInfo, DeadBodyInfoMonitor> lethalBotDeadBodyInfoMonitor = new ConditionalWeakTable<DeadBodyInfo, DeadBodyInfoMonitor>();
 
         /// <summary>
         /// Helper function that retrieves the <see cref="DeadBodyInfoMonitor"/>
@@ -30,9 +30,9 @@ namespace LethalBots.Patches.ObjectsPatches
         /// <param name="body"></param>
         /// <returns>The <see cref="DeadBodyInfoMonitor"/> associated with the given <see cref="DeadBodyInfo"/></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static DeadBodyInfoMonitor GetOrCreateMonitor(DeadBodyInfo body)
+        public static DeadBodyInfoMonitor GetOrCreateMonitor(DeadBodyInfo body)
         {
-            return lethalBotDeadBodyInfoMonitor.GetOrCreateValue(body);
+            return lethalBotDeadBodyInfoMonitor.GetValue(body, _ => new DeadBodyInfoMonitor());
         }
 
         /// <summary>
@@ -46,7 +46,6 @@ namespace LethalBots.Patches.ObjectsPatches
             DeadBodyInfoMonitor deadBodyInfoMonitor = GetOrCreateMonitor(__instance);
             if (!deadBodyInfoMonitor.CanUpdate())
             {
-                deadBodyInfoMonitor.Update(Time.deltaTime);
                 return;
             }
 
@@ -146,24 +145,50 @@ namespace LethalBots.Patches.ObjectsPatches
         [HarmonyPostfix]
         private static void OnDestroy_Postfix(DeadBodyInfo __instance)
         {
-            if (lethalBotDeadBodyInfoMonitor.TryGetValue(__instance, out _))
-            {
-                lethalBotDeadBodyInfoMonitor.Remove(__instance);
-            }
+            lethalBotDeadBodyInfoMonitor.Remove(__instance);
         }
 
-        // Might as well make it inherit the UpdateLimiter class.
-        // Less objects to keep refrence of in memory!
-        private class DeadBodyInfoMonitor : UpdateLimiter
+        /// <summary>
+        /// Monitors and manages the seen body status for bots, allowing tracking of whether each bot has observed a
+        /// dead body.
+        /// </summary>
+        /// <remarks>
+        /// This class is intended for the on see dead body fear mechanic.<br/>
+        /// It limits update frequency according to the specified interval and is not thread-safe.<br/>
+        /// This class also inherits from <see cref="UpdateLimiter"/>
+        /// </remarks>
+        public sealed class DeadBodyInfoMonitor : UpdateLimiter
         {
-            public Dictionary<LethalBotAI, bool> lethalBotAIs = new Dictionary<LethalBotAI, bool>();
+            private const float UPDATE_INTERVAL = 0.5f;
+            private readonly Dictionary<LethalBotAI, bool> lethalBotAIs = new Dictionary<LethalBotAI, bool>();
 
+            /// <summary>
+            /// Initializes a new instance of the DeadBodyInfoMonitor class using the default update interval.
+            /// </summary>
+            internal DeadBodyInfoMonitor() : this(UPDATE_INTERVAL) { }
+
+            /// <summary>
+            /// Initializes a new instance of the DeadBodyInfoMonitor class with the specified update interval.
+            /// </summary>
+            /// <param name="updateInterval">The time interval, in seconds, between monitor updates. Must be greater than zero.</param>
+            internal DeadBodyInfoMonitor(float updateInterval) : base(updateInterval) { }
+
+            /// <summary>
+            /// Sets the seen body status for the specified bot.
+            /// </summary>
+            /// <param name="bot">The bot whose seen body status is being updated. Cannot be null.</param>
+            /// <param name="seenBody">true to mark the bot as having its body seen; otherwise, false. The default is true.</param>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public void SetBotSeenBody(LethalBotAI bot)
+            public void SetBotSeenBody(LethalBotAI bot, bool seenBody = true)
             {
-                lethalBotAIs[bot] = true;
+                lethalBotAIs[bot] = seenBody;
             }
 
+            /// <summary>
+            /// Determines whether the specified bot has previously seen the body.
+            /// </summary>
+            /// <param name="bot">The bot to check for prior body visibility. Cannot be null.</param>
+            /// <returns>true if the specified bot has seen the body; otherwise, false.</returns>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool HasBotSeenBody(LethalBotAI bot)
             {

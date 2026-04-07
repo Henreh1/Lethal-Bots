@@ -520,7 +520,7 @@ namespace LethalBots.AI
                     //float entranceDistSqr = (entrance.entrancePoint.position - npcController.Npc.transform.position).sqrMagnitude;
                     if (entrance.FindExitPoint()
                         && !IsEntranceCoveredInQuickSand(entrance)
-                        && LethalBotAI.IsValidPathToTarget(RoundManager.Instance.GetNavMeshPosition(entrance.exitPoint.position), shipPos.Value, ai.agent.areaMask, ref ai.path1, false, out _)
+                        && LethalBotAI.IsValidPathToTarget(RoundManager.Instance.GetNavMeshPosition(entrance.exitScript.entrancePoint.position), shipPos.Value, ai.agent.areaMask, ref ai.path1, false, out _)
                         && CanPathToEntrance(entrance, true) 
                         && ai.pathDistance < closestEntranceDist)
                     {
@@ -559,7 +559,7 @@ namespace LethalBots.AI
             // Check if the entrance is covered in quicksand
             if (entrance != null)
             {
-                return IsPositionCoveredInQuickSand(entrance.isEntranceToBuilding ? entrance.entrancePoint.position : entrance.exitPoint.position);
+                return IsPositionCoveredInQuickSand(entrance.isEntranceToBuilding ? entrance.entrancePoint.position : entrance.exitScript.entrancePoint.position);
             }
             return false;
         }
@@ -711,7 +711,7 @@ namespace LethalBots.AI
             }
 
             // If we don't have a cached value, we need to check if the entrance is safe
-            Vector3 entrancePoint = useEntrancePoint ? entrance.entrancePoint.position : entrance.exitPoint.position;
+            Vector3 entrancePoint = useEntrancePoint ? entrance.entrancePoint.position : entrance.exitScript.entrancePoint.position;
             foreach (EnemyAI enemy in RoundManager.Instance.SpawnedEnemies)
             {
                 const float dangerRange = 7.7f; // 7.7f is the same distance used by the base game to show the enemy activity nearby message!
@@ -987,13 +987,13 @@ namespace LethalBots.AI
         {
             // If we have an item we would like to use in our inventory, we should switch to it!
             if (ai.CanSwitchItemSlot() 
-                && ai.TryFindItemInInventory(SelectBestItemFromInventoryFilter, SelectBetterItemFromInventory, out int bestItem) 
-                && bestItem != Const.INVALID_ITEM_SLOT)
+                && ai.TryFindItemInInventory(SelectBestItemFromInventoryFilter, SelectBetterItemFromInventory, out int bestItemSlot) 
+                && bestItemSlot != Const.INVALID_ITEM_SLOT)
             {
-                GrabbableObject item = npcController.Npc.ItemSlots[bestItem];
-                if (npcController.Npc.currentItemSlot != bestItem || ai.HeldItem != item)
+                GrabbableObject item = bestItemSlot == Const.RESERVED_EQUIPMENT_SLOT ? npcController.Npc.ItemOnlySlot : npcController.Npc.ItemSlots[bestItemSlot];
+                if (npcController.Npc.currentItemSlot != bestItemSlot || ai.HeldItem != item)
                 {
-                    ai.SwitchItemSlotsAndSync(bestItem);
+                    ai.SwitchItemSlotsAndSync(bestItemSlot);
                 }
             }
         }

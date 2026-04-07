@@ -20,6 +20,7 @@ using TooManyEmotes.Networking;
 using Unity.IO.LowLevel.Unsafe;
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.InputSystem.HID;
 using UnityEngine.Rendering;
 using Random = UnityEngine.Random;
 
@@ -314,8 +315,11 @@ namespace LethalBots.AI
             // Update our stamina status
             UpdateStaminaTimer();
 
-            // Update drunkness effects
-            UpdateDrunknessEffects();
+            // Update drunkness and poison effects
+            UpdateDrunknessAndPoisonEffects();
+
+            // Update the bot's line of sight cube
+            UpdateLineOfSightCube();
 
             // Update our player sanity
             PlayerControllerBPatch.SetPlayerSanityLevel_ReversePatch(Npc);
@@ -731,6 +735,10 @@ namespace LethalBots.AI
                 {
                     num3 *= instanceSOR.drunknessSpeedEffect.Evaluate(Npc.drunkness) / 5f + 1f;
                 }
+                if (Npc.poison > 0f)
+                {
+                    num3 *= 0.75f;
+                }
                 if (!Npc.isCrouching && CrouchMeter > 1.2f)
                 {
                     num3 *= 0.5f;
@@ -749,6 +757,10 @@ namespace LethalBots.AI
             else if (Npc.drunkness > 0.3f)
             {
                 num7 = Mathf.Clamp(Mathf.Abs(Npc.drunkness - 2.25f), 0.3f, 2.5f);
+            }
+            else if (Npc.poison > 0.3f)
+            {
+                num7 = Mathf.Clamp(Mathf.Abs(Npc.poison - 2.25f), 0.3f, 2.5f);
             }
             else if (!Npc.isCrouching && CrouchMeter > 1f)
             {
@@ -1293,17 +1305,24 @@ namespace LethalBots.AI
         }
 
         /// <summary>
-        /// Updates the drunkness effects for the bot's <see cref="PlayerControllerB"/>!
+        /// Updates the drunkness and posion effects for the bot's <see cref="PlayerControllerB"/>!
         /// </summary>
-        private void UpdateDrunknessEffects()
+        private void UpdateDrunknessAndPoisonEffects()
         {
             if (Npc.isPlayerDead)
             {
                 Npc.drunkness = 0f;
                 Npc.drunknessInertia = 0f;
+                Npc.poison = 0f;
             }
             else
             {
+                if (Npc.slimeOnFace >= 0f)
+                {
+                    Npc.slimeOnFace -= Time.deltaTime;
+                    Npc.slimeOnFaceDecals[0].fadeFactor = Mathf.Min(Npc.slimeOnFace, 1f);
+                    Npc.slimeOnFaceDecals[1].fadeFactor = Mathf.Min(Npc.slimeOnFace, 1f);
+                }
                 Npc.drunkness = Mathf.Clamp(Npc.drunkness + Time.deltaTime / 12f * Npc.drunknessSpeed * Npc.drunknessInertia, 0f, 1f);
                 if (!Npc.increasingDrunknessThisFrame)
                 {
@@ -1320,6 +1339,25 @@ namespace LethalBots.AI
                 {
                     Npc.increasingDrunknessThisFrame = false;
                 }
+                if (!Npc.overridePoisonValue)
+                {
+                    Npc.poison = Mathf.Clamp(Npc.poison + Time.deltaTime / 12f * Npc.poisonSpeed * Npc.poisonInertia, 0f, 1f);
+                }
+                if (!Npc.increasingPoisonThisFrame)
+                {
+                    if (Npc.poison > 0f)
+                    {
+                        Npc.poisonInertia = Mathf.Clamp(Npc.poisonInertia - Time.deltaTime / 3f * Npc.poisonSpeed / Mathf.Clamp(Mathf.Abs(Npc.poisonInertia), 0.2f, 1f), -2.5f, 2.5f);
+                    }
+                    else
+                    {
+                        Npc.poisonInertia = 0f;
+                    }
+                }
+                else
+                {
+                    Npc.increasingPoisonThisFrame = false;
+                }
                 float num11 = StartOfRound.Instance.drunknessSideEffect.Evaluate(Npc.drunkness);
                 LethalBotVoice lethalBotVoice = LethalBotAIController.LethalBotIdentity.Voice;
                 float botVoicePitch = lethalBotVoice.VoicePitch;
@@ -1332,6 +1370,21 @@ namespace LethalBots.AI
                     SoundManager.Instance.playerVoicePitchTargets[Npc.playerClientId] = botVoicePitch;
                 }
                 //SoundManager.Instance.playerVoiceVolumes[Npc.playerClientId] = lethalBotVoice.Volume;
+            }
+        }
+
+        /// <summary>
+        /// I have no idea what the line of sight cube is, but it exists, so I need to update it!
+        /// </summary>
+        private void UpdateLineOfSightCube()
+        {
+            if (Physics.Raycast(Npc.lineOfSightCube.position, Npc.lineOfSightCube.forward, out var hit, 10f, Npc.playersManager.collidersAndRoomMask, QueryTriggerInteraction.Ignore))
+            {
+                Npc.lineOfSightCube.localScale = new Vector3(1.5f, 1.5f, hit.distance);
+            }
+            else
+            {
+                Npc.lineOfSightCube.localScale = new Vector3(1.5f, 1.5f, 10f);
             }
         }
 

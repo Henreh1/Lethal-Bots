@@ -1,5 +1,4 @@
-﻿using DunGen;
-using GameNetcodeStuff;
+﻿using GameNetcodeStuff;
 using LethalBots.Constants;
 using LethalBots.Enums;
 using LethalBots.Managers;
@@ -83,6 +82,14 @@ namespace LethalBots.AI.AIStates
             if (playerController != null)
             {
                 ai.State = new RescueAndReviveState(this, playerController);
+                return;
+            }
+
+            // Check to see if we can heal someone!
+            playerController = ai.LookingForPlayerToHeal();
+            if (playerController != null)
+            {
+                ai.State = new HealPlayerState(this, playerController);
                 return;
             }
 

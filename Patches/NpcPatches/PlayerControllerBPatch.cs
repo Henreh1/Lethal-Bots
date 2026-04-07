@@ -378,12 +378,12 @@ namespace LethalBots.Patches.NpcPatches
         /// <returns></returns>
         [HarmonyPatch("DropAllHeldItems")]
         [HarmonyPrefix]
-        static bool DropAllHeldItems_Prefix(PlayerControllerB __instance, bool itemsFall = true)
+        static bool DropAllHeldItems_Prefix(PlayerControllerB __instance, bool itemsFall = true, bool setInShip = false, bool setInElevator = false, Vector3 syncedPlayerPosition = default(Vector3), Vector3 syncedHeldObjectPosition = default(Vector3), Vector3 syncedHeldObjectRotation = default(Vector3), Vector3 syncedPlayerCamPosition = default(Vector3), Vector3 syncedPlayerCamRotation = default(Vector3))
         {
             LethalBotAI? lethalBotAI = LethalBotManager.Instance.GetLethalBotAI(__instance);
             if (lethalBotAI != null)
             {
-                lethalBotAI.DropAllHeldItems(itemsFall);
+                lethalBotAI.DropAllHeldItems(itemsFall, setInShip, setInElevator, syncedPlayerPosition, syncedHeldObjectPosition, syncedHeldObjectRotation, syncedPlayerCamPosition, syncedPlayerCamRotation);
                 return false;
             }
             return true;
@@ -465,24 +465,24 @@ namespace LethalBots.Patches.NpcPatches
             return true;
         }
 
-        /// <summary>
-        /// Patch for calling lethalBot method if lethalBot
-        /// </summary>
-        /// <param name="__instance"></param>
-        /// <returns></returns>
-        [HarmonyPatch("PlayerHitGroundEffects")]
-        [HarmonyPrefix]
-        static bool PlayerHitGroundEffects_PreFix(PlayerControllerB __instance)
-        {
-            LethalBotAI? lethalBotAI = LethalBotManager.Instance.GetLethalBotAI(__instance);
-            if (lethalBotAI != null)
-            {
-                PlayerHitGroundEffects_ReversePatch(__instance);
-                return false;
-            }
+        ///// <summary>
+        ///// Patch for calling lethalBot method if lethalBot
+        ///// </summary>
+        ///// <param name="__instance"></param>
+        ///// <returns></returns>
+        //[HarmonyPatch("PlayerHitGroundEffects")]
+        //[HarmonyPrefix]
+        //static bool PlayerHitGroundEffects_PreFix(PlayerControllerB __instance)
+        //{
+        //    LethalBotAI? lethalBotAI = LethalBotManager.Instance.GetLethalBotAI(__instance);
+        //    if (lethalBotAI != null)
+        //    {
+        //        PlayerHitGroundEffects_ReversePatch(__instance);
+        //        return false;
+        //    }
 
-            return true;
-        }
+        //    return true;
+        //}
 
         [HarmonyPatch("IncreaseFearLevelOverTime")]
         [HarmonyPrefix]
@@ -668,6 +668,22 @@ namespace LethalBots.Patches.NpcPatches
         public static void RemovePlayerPhysicsParentServerRpc_ReversePatch(object instance, Vector3 newPos, bool removeOverride, bool removeBoth, bool inElevator, bool isInShip) => throw new NotImplementedException("Stub LethalBot.Patches.NpcPatches.PlayerControllerBPatch.RemovePlayerPhysicsParentServerRpc_ReversePatch");
 
         /// <summary>
+        /// Reverse patch to call <c>DropHeldItem</c>.<br/>
+        /// </summary>
+        /// <remarks>
+        /// This is a stub for the reverse patch, it will be replaced by the actual implementation
+        /// </remarks>
+        /// <param name="instance"></param>
+        /// <param name="dropItem"></param>
+        /// <param name="itemsFall"></param>
+        /// <param name="disconnecting"></param>
+        /// <exception cref="NotImplementedException"></exception>
+        [HarmonyPatch("DropHeldItem")]
+        [HarmonyReversePatch(type: HarmonyReversePatchType.Snapshot)]
+        [HarmonyPriority(Priority.Last)]
+        public static void DropHeldItem_ReversePatch(object instance, GrabbableObject dropItem, bool itemsFall, bool disconnecting, Vector3 syncedPlayerPosition, Vector3 syncedHeldObjectPosition, Vector3 syncedHeldObjectRotation, Vector3 syncedPlayerCamPosition, Vector3 syncedPlayerCamRotation, bool setInShip, bool setInElevator) => throw new NotImplementedException("Stub LethalBot.Patches.NpcPatches.PlayerControllerBPatch.DropHeldItem_ReversePatch");
+
+        /// <summary>
         /// Reverse patch to call <c>PlayJumpAudio</c>
         /// </summary>
         /// <exception cref="NotImplementedException"></exception>
@@ -682,41 +698,7 @@ namespace LethalBots.Patches.NpcPatches
         [HarmonyPatch("PlayerHitGroundEffects")]
         [HarmonyReversePatch(type: HarmonyReversePatchType.Snapshot)]
         [HarmonyPriority(Priority.Last)]
-        public static void PlayerHitGroundEffects_ReversePatch(object instance)
-        {
-            IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
-            {
-                var startIndex = -1;
-                List<CodeInstruction> codes = new List<CodeInstruction>(instructions);
-
-                // ----------------------------------------------------------------------
-                for (var i = 0; i < codes.Count - 5; i++)
-                {
-                    if (codes[i].ToString().StartsWith("ldarg.0 NULL") // 33
-                        && codes[i + 5].ToString().StartsWith("call void GameNetcodeStuff.PlayerControllerB::LandFromJumpServerRpc(")) // 38
-                    {
-                        startIndex = i;
-                        break;
-                    }
-                }
-                if (startIndex > -1)
-                {
-                    codes[startIndex + 5].operand = PatchesUtil.SyncLandFromJumpMethod;
-                    codes.Insert(startIndex + 1, new CodeInstruction(OpCodes.Ldfld, PatchesUtil.FieldInfoPlayerClientId));
-                    startIndex = -1;
-                }
-                else
-                {
-                    Plugin.LogError($"LethalBot.Patches.NpcPatches.PlayerControllerBPatch.PlayerHitGroundEffects_ReversePatch could not use jump from land method for lethalBot");
-                }
-
-                return codes.AsEnumerable();
-            }
-
-#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
-            _ = Transpiler(null);
-#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
-        }
+        public static void PlayerHitGroundEffects_ReversePatch(object instance) => throw new NotImplementedException("Stub LethalBot.Patches.NpcPatches.PlayerControllerBPatch.PlayerHitGroundEffects_ReversePatch");
 
         /// <summary>
         /// Reverse patch to call <c>CheckConditionsForEmote</c>
@@ -750,40 +732,7 @@ namespace LethalBots.Patches.NpcPatches
         [HarmonyPatch("IsInSpecialAnimationClientRpc")]
         [HarmonyReversePatch(type: HarmonyReversePatchType.Snapshot)]
         [HarmonyPriority(Priority.Last)]
-        public static void IsInSpecialAnimationClientRpc_ReversePatch(object instance, bool specialAnimation, float timed, bool climbingLadder)
-        {
-            IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
-            {
-                var startIndex = -1;
-                List<CodeInstruction> codes = new List<CodeInstruction>(instructions);
-
-                // ----------------------------------------------------------------------
-                for (var i = 0; i < codes.Count - 3; i++)
-                {
-                    if (codes[i].ToString().StartsWith("call bool Unity.Netcode.NetworkBehaviour::get_IsOwner()")// 70
-                        && codes[i + 3].ToString().StartsWith("ldstr \"Setting animation on client\""))// 73
-                    {
-                        startIndex = i;
-                        break;
-                    }
-                }
-                if (startIndex > -1)
-                {
-                    codes.Insert(0, new CodeInstruction(OpCodes.Br, codes[startIndex + 3].labels[0]));
-                    startIndex = -1;
-                }
-                else
-                {
-                    Plugin.LogError($"LethalBot.Patches.NpcPatches.PlayerControllerBPatch.IsInSpecialAnimationClientRpc_ReversePatch could not bypass rpc stuff");
-                }
-
-                return codes.AsEnumerable();
-            }
-
-#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
-            _ = Transpiler(null);
-#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
-        }
+        public static void IsInSpecialAnimationClientRpc_ReversePatch(object instance, bool specialAnimation, float timed, bool climbingLadder) => throw new NotImplementedException("Stub LethalBot.Patches.NpcPatches.PlayerControllerBPatch.IsInSpecialAnimationClientRpc_ReversePatch");
 
         /// <summary>
         /// Reverse patch to be able to call <c>SyncBodyPositionClientRpc</c>
@@ -796,7 +745,7 @@ namespace LethalBots.Patches.NpcPatches
         [HarmonyPriority(Priority.Last)]
         public static void SyncBodyPositionClientRpc_ReversePatch(object instance, Vector3 newBodyPosition)
         {
-            IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+            /*IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
             {
                 var startIndex = -1;
                 List<CodeInstruction> codes = new List<CodeInstruction>(instructions);
@@ -826,7 +775,7 @@ namespace LethalBots.Patches.NpcPatches
 
 #pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
             _ = Transpiler(null);
-#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
+#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.*/
         }
 
         [HarmonyPatch("SetSpecialGrabAnimationBool")]
@@ -980,7 +929,7 @@ namespace LethalBots.Patches.NpcPatches
                         return;
                     }
 
-                    if (ragdoll.bodyID.Value == Const.INIT_RAGDOLL_ID)
+                    if (ragdoll.bodyID == Const.INIT_RAGDOLL_ID)
                     {
                         // Remove tooltip text
                         __instance.cursorTip.text = string.Empty;

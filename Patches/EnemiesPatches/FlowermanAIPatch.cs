@@ -15,23 +15,6 @@ namespace LethalBots.Patches.EnemiesPatches
     [HarmonyPatch(typeof(FlowermanAI))]
     public class FlowermanAIPatch
     {
-        // Conditional Weak Table since when the FlowermanAI is removed, the table automatically cleans itself!
-        // TODO: I should probably move this along with the UpdateLimiter into its own file, an change the key to EnemyAI, so
-        // I don't have to keep recreating this code.....
-        private static ConditionalWeakTable<FlowermanAI, UpdateLimiter> nextUpdateList = new ConditionalWeakTable<FlowermanAI, UpdateLimiter>();
-
-        /// <summary>
-        /// Helper function that retrieves the <see cref="UpdateLimiter"/>
-        /// for the given <see cref="FlowermanAI"/>
-        /// </summary>
-        /// <param name="ai"></param>
-        /// <returns>The <see cref="UpdateLimiter"/> associated with the given <see cref="FlowermanAI"/></returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static UpdateLimiter GetOrCreateMonitor(FlowermanAI ai)
-        {
-            return nextUpdateList.GetValue(ai, key => new UpdateLimiter(0.5f)); // TODO: Find out how long I should make my patch wait between calls! 
-        }
-
         /// <summary>
         /// Fixes bug where bots are unable to fend off the Braken since the checks are only for the local client!
         /// </summary>
@@ -45,10 +28,9 @@ namespace LethalBots.Patches.EnemiesPatches
                 return;
             }
 
-            UpdateLimiter updateLimiter = GetOrCreateMonitor(__instance);
+            UpdateLimiter updateLimiter = UpdateLimiter.GetOrCreateMonitor(__instance);
             if (!updateLimiter.CanUpdate())
             {
-                updateLimiter.Update(Time.deltaTime);
                 return;
             }
 

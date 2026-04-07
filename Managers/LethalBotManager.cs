@@ -11,14 +11,15 @@ using LethalBots.Patches.ModPatches.LethalPhones;
 using LethalBots.Patches.NpcPatches;
 using LethalBots.Utils.Helpers;
 using LethalLib.Modules;
-using SpeechRecognitionAPI;
 using Scoops.customization;
 using Scoops.gameobjects;
 using Scoops.misc;
 using Scoops.service;
+using SpeechRecognitionAPI;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -854,6 +855,8 @@ namespace LethalBots.Managers
             RegisterThreat(typeof(ButlerBeesEnemyAI), 20f, null, 15f); // Butler Bees
             RegisterThreat(typeof(BlobAI), 10f, null, 10f); // Blob
             RegisterThreat(typeof(BaboonBirdAI), 10f, 5f, 10f); // Annoying, Baboon Hawks......
+            RegisterThreat(typeof(PumaAI), 10f, null, 10f); // Feiopars
+            RegisterThreat(typeof(CadaverBloomAI), 20f, null, 20f); // Cadaver Bloom
 
             // Dynamic behavior threats
             // Old Birds!
@@ -1034,8 +1037,7 @@ namespace LethalBots.Managers
             //     _ => null   // No value for pathfinding
             // );
 
-            // Girl aka Ghost Girl is always ignored (for now), so skip or:
-            //RegisterThreat(typeof(DressGirlAI), (float?)null, (float?)null, (float?)null);
+            // Girl aka Ghost Girl
             RegisterThreat(typeof(DressGirlAI), 
                 fq => fq.EnemyAI is DressGirlAI ghostGirl && fq.Bot is LethalBotAI lethalBotAI && ghostGirl.hauntingPlayer == lethalBotAI.NpcController.Npc && ghostGirl.currentBehaviourStateIndex > 0 ? 40f : null,
                 _ => null,  // No value for mission control
@@ -1287,6 +1289,8 @@ namespace LethalBots.Managers
             lethalBotController.parentedToElevatorLastFrame = false; // Force update!
             lethalBotController.playerActions = new PlayerActions();
             lethalBotController.health = spawnParamsNetworkSerializable.Hp == 0 ? 100 : spawnParamsNetworkSerializable.Hp;
+            lethalBotController.overridePoisonValue = false;
+            lethalBotController.carryWeight = 1f;
             lethalBotController.DisablePlayerModel(objectParent, enable: true, disableLocalArms: true);
             lethalBotController.isInsideFactory = !spawnParamsNetworkSerializable.IsOutside;
             lethalBotController.isMovementHindered = 0;
@@ -1674,6 +1678,11 @@ namespace LethalBots.Managers
                 if (!lethalBotController.isPlayerDead)
                 {
                     instanceSOR.livingPlayers--; // Living bot was kicked, decrement living player count
+                    if (base.IsServer)
+                    {
+                        // Bot was kicked, mimic the same logic used when a player leaves or is kicked.
+                        StartOfRound.Instance.LocalPlayerDieEvent.Invoke(lethalBotController, 200);
+                    }
                 }
                 instanceSOR.connectedPlayersAmount--; // Connected bot was kicked, decrement connected player count
 
@@ -2793,9 +2802,7 @@ namespace LethalBots.Managers
                 yield break;
             }
 
-            Vector3 positionLethalBot;
             Vector3 teleportPos = default(Vector3);
-            Vector3 nodePos;
             AudioReverbPresets audioReverbPresets = Object.FindObjectOfType<AudioReverbPresets>();
             LethalBotAI[] lethalBotAIs = GetLethalBotsAIOwnedByLocal();
             foreach (LethalBotAI lethalBotAI in lethalBotAIs)
@@ -2810,51 +2817,52 @@ namespace LethalBots.Managers
                     continue;
                 }
 
-                positionLethalBot = lethalBotAI.NpcController.Npc.transform.position;
-                if (lethalBotAI.NpcController.Npc.deadBody != null)
-                {
-                    positionLethalBot = lethalBotAI.NpcController.Npc.deadBody.bodyParts[5].transform.position;
-                }
+                //positionLethalBot = lethalBotAI.NpcController.Npc.transform.position;
+                //if (lethalBotAI.NpcController.Npc.deadBody != null)
+                //{
+                //    positionLethalBot = lethalBotAI.NpcController.Npc.deadBody.bodyParts[5].transform.position;
+                //}
 
-                if ((positionLethalBot - teleporter.teleportOutPosition.position).sqrMagnitude > 2f * 2f)
-                {
-                    continue;
-                }
+                //if ((positionLethalBot - teleporter.teleportOutPosition.position).sqrMagnitude > 2f * 2f)
+                //{
+                //    continue;
+                //}
 
-                if (RoundManager.Instance.insideAINodes.Length == 0)
-                {
-                    continue;
-                }
+                //if (RoundManager.Instance.insideAINodes.Length == 0)
+                //{
+                //    continue;
+                //}
 
-                // Random pos
-                nodePos = RoundManager.Instance.insideAINodes[shipTeleporterSeed.Next(0, RoundManager.Instance.insideAINodes.Length)].transform.position;
+                //// Random pos
+                //nodePos = RoundManager.Instance.insideAINodes[shipTeleporterSeed.Next(0, RoundManager.Instance.insideAINodes.Length)].transform.position;
 
-                int maxAttempts = 10;
-                bool foundTeleportPosition = false;
-                for (int i = 0; i < maxAttempts; i++)
-                {
-                    teleportPos = RoundManager.Instance.GetRandomNavMeshPositionInBoxPredictable(nodePos, 10f, default(NavMeshHit), shipTeleporterSeed, -1);
+                //int maxAttempts = 10;
+                //bool foundTeleportPosition = false;
+                //for (int i = 0; i < maxAttempts; i++)
+                //{
+                //    teleportPos = RoundManager.Instance.GetRandomNavMeshPositionInBoxPredictable(nodePos, 10f, default(NavMeshHit), shipTeleporterSeed, -1);
 
-                    // Now we check if we would spawn inside of an object!
-                    if (!Physics.CheckSphere(teleportPos + Vector3.up * 0.2f, radius: lethalBotAI.agent.radius, StartOfRound.Instance.allPlayersCollideWithMask))
-                    {
-                        foundTeleportPosition = true;
-                        break;
-                    }
-                }
+                //    // Now we check if we would spawn inside of an object!
+                //    if (!Physics.CheckSphere(teleportPos + Vector3.up * 0.2f, radius: lethalBotAI.agent.radius, StartOfRound.Instance.allPlayersCollideWithMask))
+                //    {
+                //        foundTeleportPosition = true;
+                //        break;
+                //    }
+                //}
 
-                // If we fail to find a vaild teleport position, just choose the node itself!
-                // NEEDTOVALIDATE: We may no longer need this code as the bots can now stuck teleport!
-                if (!foundTeleportPosition)
-                {
-                    Plugin.LogWarning($"BeamOutLethalBots failed to find random navmesh postion near target node that was not obstructed for Bot {lethalBotAI.NpcController.Npc.playerUsername} after {maxAttempts} attempts!");
-                    Plugin.LogWarning("Falling back to the actual node position instead!");
-                    teleportPos = RoundManager.Instance.GetNavMeshPosition(nodePos, default(NavMeshHit), 2.7f, -1);
-                }
+                //// If we fail to find a vaild teleport position, just choose the node itself!
+                //// NEEDTOVALIDATE: We may no longer need this code as the bots can now stuck teleport!
+                //if (!foundTeleportPosition)
+                //{
+                //    Plugin.LogWarning($"BeamOutLethalBots failed to find random navmesh postion near target node that was not obstructed for Bot {lethalBotAI.NpcController.Npc.playerUsername} after {maxAttempts} attempts!");
+                //    Plugin.LogWarning("Falling back to the actual node position instead!");
+                //    teleportPos = RoundManager.Instance.GetNavMeshPosition(nodePos, default(NavMeshHit), 2.7f, -1);
+                //}
 
                 // Teleport bot
                 PlayerControllerB playerControllerB = lethalBotAI.NpcController.Npc;
                 ShipTeleporterPatch.SetPlayerTeleporterId_ReversePatch(teleporter, playerControllerB, 2);
+                teleportPos = ShipTeleporterPatch.GetInverseTelePosition_ReversePatch(teleporter);
                 if (playerControllerB.deadBody != null)
                 {
                     teleporter.TeleportPlayerBodyOutServerRpc((int)playerControllerB.playerClientId, teleportPos);
@@ -3609,6 +3617,12 @@ namespace LethalBots.Managers
                     continue;
                 }*/
 
+                if (base.IsServer)
+                { 
+                    // Mimic logic of the base game when a player leaves the server.
+                    StartOfRound.Instance.LocalPlayerDieEvent.Invoke(lethalBotController, 200); 
+                }
+
                 // Mod support!!!!
                 if (Plugin.IsModModelReplacementAPILoaded)
                 {
@@ -3748,6 +3762,20 @@ namespace LethalBots.Managers
                                         Vector3 positionOffset = item.itemProperties.positionOffset;
                                         positionOffset = parentObject.rotation * positionOffset;
                                         item.transform.position += positionOffset;
+                                    }
+                                }
+                                GrabbableObject? itemOnlySlot = lethalBotController.ItemOnlySlot;
+                                if (itemOnlySlot != null)
+                                {
+                                    Transform parentObject = itemOnlySlot.parentObject;
+                                    if (parentObject != null)
+                                    {
+                                        itemOnlySlot.transform.rotation = parentObject.rotation;
+                                        itemOnlySlot.transform.Rotate(itemOnlySlot.itemProperties.rotationOffset);
+                                        itemOnlySlot.transform.position = parentObject.position;
+                                        Vector3 positionOffset = itemOnlySlot.itemProperties.positionOffset;
+                                        positionOffset = parentObject.rotation * positionOffset;
+                                        itemOnlySlot.transform.position += positionOffset;
                                     }
                                 }
                             }

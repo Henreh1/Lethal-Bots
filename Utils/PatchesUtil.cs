@@ -16,7 +16,7 @@ namespace LethalBots.Utils
         public static readonly FieldInfo FieldInfoPlayerClientId = AccessTools.Field(typeof(PlayerControllerB), "playerClientId");
         public static readonly FieldInfo FieldInfoPreviousAnimationStateHash = AccessTools.Field(typeof(PlayerControllerB), "previousAnimationStateHash");
         public static readonly FieldInfo FieldInfoCurrentAnimationStateHash = AccessTools.Field(typeof(PlayerControllerB), "currentAnimationStateHash");
-        public static readonly FieldInfo FieldInfoTargetPlayer = AccessTools.Field(typeof(BushWolfEnemy), "targetPlayer");
+        public static readonly FieldInfo FieldInfoTargetPlayer = AccessTools.Field(typeof(EnemyAI), "targetPlayer");
         public static readonly FieldInfo FieldInfoDraggingPlayer = AccessTools.Field(typeof(BushWolfEnemy), "draggingPlayer");
 
         #region AccessTools FieldRefs
@@ -32,6 +32,7 @@ namespace LethalBots.Utils
 
         public static readonly AccessTools.FieldRef<PlayerControllerB, Vector3> positionOfDeathField = AccessTools.FieldRefAccess<Vector3>(typeof(PlayerControllerB), "positionOfDeath");
         public static readonly AccessTools.FieldRef<PlayerControllerB, float> timeSinceSwitchingSlotsField = AccessTools.FieldRefAccess<float>(typeof(PlayerControllerB), "timeSinceSwitchingSlots");
+        public static readonly AccessTools.FieldRef<PlayerControllerB, float> slimeSlipAudioVolumeSyncFiled = AccessTools.FieldRefAccess<float>(typeof(PlayerControllerB), "slimeSlipAudioVolumeSync");
 
         #endregion
 
