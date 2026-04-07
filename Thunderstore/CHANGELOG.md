@@ -1,5 +1,45 @@
 # Changelog
 
+## 5.0.0 - 2026-4-7
+ITS V81 TIME!!!!!!!<br/>
+Hello again, V81 came out and as such the bots needed to be updated to work with the newest version of Lethal Company. I have also taken the liberty to teach the bots how to counter one of the new enemies, but with a catch. Now onto the patch notes!
+
+## Main Bot Fixes
+Now, here are some general AI fixes for the bots:
+- Added Harmony reverse patch for ShipTeleporter.GetInverseTelePosition to mimic base game inverse teleporter logic
+- Bots now understand how the new equipment slot works
+- Updated some of the inventory code to be more consistent with how the base game does it
+- Fixed a minor logic error with bots assigned to transfer loot that had a loadout assigned
+- Added a constraint for the new reserved equipment slot
+- Added a new reverse patch for DropHeldItem
+- Improved drunkness effects and ship bounds logic for bots
+- Updated item drop syncing to be more in line with how the base game handles it
+- Refactored UpdateLimiter and DeadBodyInfoMonitor for reuse and robustness
+
+## Bot Infection & Healing System
+The new infection system with one of the new enemies had to be addressed in this update. I needed to have the bots understand how to counter it since it would be really bad if they didn't. I will note that the bots were taught to NOT understand the too far gone mechanic........for now.......
+- Added infection support for bots
+- Introduced LethalBotInfection for networked infection state tracking
+- Bots can now be infected, show symptoms, and have the infection burst from them
+- Introduced HealInfectionLevel network variable to control when bots attempt to cure the infection with weed killer (randomly selected from 0.3-0.7 inclusive)
+- Added SprayPaintItemPatch to allow bots to use spray items
+- Added bot healing state: bots can cure the infection with Weed Killer
+- Added HealPlayerState and healing logic for bots
+- Bots now detect and heal infected players using Weed Killer
+- The infection must reach the bot's chosen infection threshold (HealInfectionLevel); bots only heal when appropriate and wait until their target's health is stable before using weed killer
+
+## AI and Logic Improvements
+To end off, we have some AI logic improvements and some general bug fixes.
+- Updated the default loadout file to include a new weed killer loadout
+- Updated the default restock file to have the bots automatically purchase weed killer
+- Updated the default bot restock economy limit to 550 credits. This is enough to make it to Rend.
+- Changed how CanEnemyBeKilled works (will improve system later)
+- Bots will now attempt to rescue players from the Kidnapper Fox if they are armed
+- Bots are now afraid of the new enemies
+- Improved enemy AI patches to use new utilities and reduce code duplication
+- Fixed multiple other patches and updated documentation
+- Fixed some logic errors with the update limiter system used in my patches
+
 ## 4.0.0 - 2026-3-30
 Since V80 just came out recently, I think its fine for me to release this update now rather than later.
 **NOTE: THIS UPDATE IS FOR V73, IT MAY OR MAY NOT WORK IN V80**
